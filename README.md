@@ -25,6 +25,7 @@ llamacpp-win-gfx1151-integration\
 └── llamacpp-engines\                    ← 【主】编译好的引擎（含全部依赖 DLL），并附 .installed 适配标记
     ├── roc_official\                    ← 官方版：HIP/ROCm（官方 ROCmFPX 主线）
     ├── vulkan_official\                 ← 官方版：Vulkan（官方 ROCmFPX 主线）
+    ├── vulkan_official_cm1\             ← 官方版：Vulkan + 实验性 CM1（cooperative-matrix，官方 ROCmFPX 主线）
     ├── rocm_w4a4\                       ← fork版：HIP/W4A4（charlie12345/ROCmFPX）
     ├── roc_rocmfp4\                     ← fork版：HIP/ROCmFP4（charlie12345/ROCmFPX）
     ├── rocm_ciru\                       ← fork版：HIP/Kairic Edge（ciru-rocmfpx，Qwen3.8-27B IU4 Kairic Edge）
@@ -38,18 +39,23 @@ llamacpp-win-gfx1151-integration\
 
 ## 引擎一览
 
-本包含 **6 个引擎**：2 个官方版（来自官方主线 `ROCmFPX/ROCmFPX`）+ 4 个 fork 版（来自 charlie12345/ROCmFPX、ciru-rocmfpx 与 LaurentZuijdwijk 的 fork）。
+本包含 **7 个引擎**：3 个官方版（来自官方主线 `ROCmFPX/ROCmFPX`）+ 4 个 fork 版（来自 charlie12345/ROCmFPX、ciru-rocmfpx 与 LaurentZuijdwijk 的 fork）。
 
 | 引擎目录 | 来源 | variant 归属 | llama-server.exe |
 |---|---|---|---|
 | `roc_official` | `ROCmFPX/ROCmFPX`（HIP，gfx1151） | rocm | ~10KB（启动壳，核心在 `llama-server-impl.dll`） |
 | `vulkan_official` | `ROCmFPX/ROCmFPX`（Vulkan，gfx1151） | vulkan | ~10KB（启动壳，核心在 `llama-server-impl.dll`） |
+| `vulkan_official_cm1` | `ROCmFPX/ROCmFPX`（Vulkan + 实验性 CM1，gfx1151） | vulkan | ~10KB（启动壳，核心在 `llama-server-impl.dll`） |
 | `rocm_w4a4` | charlie12345/ROCmFPX @ main（HIP/W4A4） | rocm | ~4.2MB（单文件） |
 | `roc_rocmfp4` | charlie12345/ROCmFPX @ main（HIP/ROCmFP4） | rocm | ~4.2MB（单文件） |
 | `rocm_ciru` | ciru-rocmfpx @ `release/kairic-edge-qwen38-27b-v1.2`（HIP/Kairic Edge，IU4） | rocm | ~4.1MB（单文件） |
 | `vulkan_qwen4exp` | LaurentZuijdwijk/llama.cpp @ `vulkan/qwen4exp-rocmfpx` | vulkan | ~10KB（启动壳，核心在 `llama-server-impl.dll`） |
 
 > 引擎都已**实测可用**：从各自目录运行 `llama-server.exe --list-devices` 均能列出 GPU（`ROCm0` / `Vulkan0: AMD Radeon 8060S`），依赖齐全。
+
+> **`vulkan_official_cm1`（新增，官方 Vulkan + CM1）**：与 `vulkan_official` **同源**（同一官方主线 `ROCmFPX/ROCmFPX`），仅额外开启了**实验性 Vulkan ROCmFP4 CM1（cooperative-matrix，F32 累加）** 构建选项（`-DGGML_VULKAN_ROCMFP4_COOPMAT=ON`，默认 OFF），让标准 `Vulkan0` 后端能把 `Q4_0_ROCMFP4` / `Q4_0_ROCMFP4_FAST` 的矩阵乘走 CM1 通道。它**仍然内置 Charlie ROCmFP4 插件**（`ggml-rocmfpx-vulkan.dll` + `rocmfpx-vulkan-plugin.dll`，暴露 `ROCmFPXVulkan0`）。
+>
+> 两个可选快路径**互斥、性能等价**：走 **`ROCmFPXVulkan0`**（Charlie 插件，只需设 `ROCMFPX_PLUGIN_PATH`），或走 **`Vulkan0` + 环境变量 `GGML_VK_ROCMFP4_COOPMAT=1`**（CM1，需确保插件未接管/`ROCMFPX_PLUGIN_PATH` 去掉）。二者不可叠加。构建与启用方法详见 [`docs\build\BUILD-VULKAN-ROCMFPX-WINDOWS.md`](docs/build/BUILD-VULKAN-ROCMFPX-WINDOWS.md) §5。
 
 > **重要（2026-09 更新）**：官方 `roc_official` / `vulkan_official` 现已**吸收 fork 全部能力**——支持 per-head PLE（`ple_ngram`）+ **MTP 投机** + `--spec-draft-adaptive` + DFlash2，**速度与其他支线（`vulkan_qwen4exp` / `rocm_w4a4`）一致**。下方 fork 测速数据即对应官方引擎的表现，两者可互相替代；fork 引擎已被官方引擎取代（推荐改用 official）。
 
@@ -247,6 +253,7 @@ Copy-Item -Path ".\vulkan_official\*" -Destination $dst -Recurse -Force
 |---|---|---|
 | `llamacpp-engines\roc_official` | ROCmFPX/ROCmFPX @ main（HIP，gfx1151） | `-DGGML_HIP=ON -DGGML_VULKAN=OFF -DGGML_HIP_FORCE_MMQ=ON -DCMAKE_HIP_ARCHITECTURES=gfx1151` + rocm-7.14 clang |
 | `llamacpp-engines\vulkan_official` | ROCmFPX/ROCmFPX @ main（Vulkan，gfx1151） | `-DGGML_VULKAN=ON -DGGML_HIP=OFF -DGGML_CUDA=OFF` + MSVC 14.44 + VULKAN_SDK 1.4.357.0 |
+| `llamacpp-engines\vulkan_official_cm1` | ROCmFPX/ROCmFPX @ main（Vulkan + 实验性 CM1，gfx1151） | `-DGGML_VULKAN=ON -DGGML_VULKAN_ROCMFP4_COOPMAT=ON -DROCMFPX_VULKAN_PLUGIN=ON -DBUILD_SHARED_LIBS=ON -DGGML_HIP=OFF -DGGML_CUDA=OFF` + MSVC + VULKAN_SDK 1.4.357.0（**Ninja** 生成器，VS 生成器在插件 ExternalProject 会报 FileTracker 错） |
 
 ### 致谢
 

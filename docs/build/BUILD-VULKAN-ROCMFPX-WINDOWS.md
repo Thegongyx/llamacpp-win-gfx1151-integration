@@ -1,7 +1,7 @@
 # 在 Windows 下编译 ROCmFPX 官方 Vulkan 版 llama.cpp 引擎（vulkan_official）
 
 本文记录在本机 Windows + AMD **gfx1151**（Radeon 8060S / Strix Halo）环境下，编译
-`ROCmFPX/ROCmFPX`（官方主线，HEAD `c3b1c99`）的 **Vulkan 引擎**（即 `vulkan_official`）的步骤。
+`ROCmFPX/ROCmFPX`（官方主线，HEAD `c3b1c99`；**实验性 CM1 加速需 ≥`aed0d5fd9`**，见 §5）的 **Vulkan 引擎**（即 `vulkan_official`）的步骤。
 产物含 **Charlie ROCmFP4 Vulkan 快速后端插件**（`ROCmFPXVulkan0`）。
 
 > 方法已在本机实测通过：`llama-server.exe --list-devices` 能列出 `Vulkan0` 与 `ROCmFPXVulkan0`，
@@ -99,6 +99,7 @@ exit /b 0
 | 开关 | 值 | 作用 |
 |---|---|---|
 | `GGML_VULKAN` | `ON` | 开启 Vulkan 后端（**必须**） |
+| `GGML_VULKAN_ROCMFP4_COOPMAT` | `ON` | （实验性）让 ROCmFP4 / ROCmFP4-FAST 走 Vulkan **CM1（cooperative matrix，F32 累加）**；默认 `OFF`（标量）。须源码 ≥`aed0d5fd9` |
 | `GGML_HIP` / `GGML_CUDA` | `OFF` | 只编 Vulkan，避免混淆（可选，显式关） |
 | `ROCMFPX_VULKAN_PLUGIN` | `ON` | 启用 **Charlie ROCmFP4 Vulkan 快速后端**（`ROCmFPXVulkan0`，速度与 fork 一致）；`OFF` 则只有普通 `Vulkan0`（较慢） |
 | `BUILD_SHARED_LIBS` | `ON` | 共享库（`ggml-vulkan`/`ggml-rocmfpx-vulkan` 为独立 DLL） |
@@ -112,7 +113,78 @@ exit /b 0
 
 ---
 
-## 5. 验证
+## 5. 实验性 CM1（cooperative-matrix）加速构建（可选）
+
+> 官方主线自 **`aed0d5fd9`**（PR #21/#22，qwen4exp CM1 公开发布）起，新增**实验性 Vulkan ROCmFP4 CM1**
+> 加速通道：把 **ROCmFP4 / ROCmFP4-FAST** 的矩阵乘通过 **Vulkan cooperative matrix（CM1，F32 累加）** 执行。
+> 默认**关闭**；源码须含 `GGML_VULKAN_ROCMFP4_COOPMAT` 选项（`c3b1c99` **不具备**，需 ≥`aed0d5fd9`）。
+
+> **现成产物**：本仓库的 **`..\llamacpp-engines\vulkan_official_cm1\`** 已附带按本节省略编译好的 CM1 引擎
+> （`ggml-vulkan.dll` 含 CM1 shader + Charlie 插件 `ggml-rocmfpx-vulkan.dll` / `rocmfpx-vulkan-plugin.dll`，
+> 可直接 `llama-server.exe --list-devices` 验证，列出 `Vulkan0` 与 `ROCmFPXVulkan0`），并已带 `.installed` 标记，
+> 作为 NovaMax 引擎（variant = vulkan）可直接选用。若只想要现成引擎、不重新编译，可跳过下方 §5.2-§5.4。
+
+### 5.1 与普通打包的关系
+
+- CM1 是**独立可选通道**：**不改** GGUF 格式、量化、权重、上下文窗口、chat template，与 MTP / n-gram 投机解码无关。
+- 建议**独立构建目录**（`build-win-vulkan-cm1`），保留既有 `build-win-vulkan` 引擎不覆盖。
+- 只有 **FP4 / FP4-FAST**（`Q4_0_ROCMFP4`、`Q4_0_ROCMFP4_FAST`）能选此路径；CM2、其他 ROCmFPX 格式、
+  HIP、GGUF layout、模型权重均不变。
+
+### 5.2 构建（在 §3 基础上只加一个开关）
+
+配置时追加 `-DGGML_VULKAN_ROCMFP4_COOPMAT=ON`（其余同 §3），用独立目录：
+
+```bat
+set "SRC=<repo_root>"
+set "BLD=%SRC%\build-win-vulkan-cm1"
+
+cmake -S "%SRC%" -B "%BLD%" -G "Visual Studio 18 2026" -A x64 ^
+  -DCMAKE_BUILD_TYPE=Release ^
+  -DBUILD_SHARED_LIBS=ON ^
+  -DGGML_VULKAN=ON ^
+  -DGGML_VULKAN_ROCMFP4_COOPMAT=ON ^
+  -DGGML_HIP=OFF ^
+  -DGGML_CUDA=OFF ^
+  -DGGML_CPU=ON ^
+  -DGGML_OPENMP=ON ^
+  -DGGML_NATIVE=ON ^
+  -DROCMFPX_VULKAN_PLUGIN=ON ^
+  -DCMAKE_PREFIX_PATH="<vulkan_sdk>/Lib/cmake" ^
+  -DLLAMA_BUILD_SERVER=ON ^
+  -DLLAMA_BUILD_WEBUI=ON ^
+  -DGGML_BUILD_TESTS=OFF -DLLAMA_BUILD_TESTS=ON || exit /b 1
+
+cmake --build "%BLD%" --config Release --target llama-server llama-cli llama-bench -j %NUMBER_OF_PROCESSORS% || exit /b 1
+```
+
+> shader 编译前置：`glslc`（<vulkan_sdk>\Bin）须支持 `GL_KHR_cooperative_matrix`——
+> 配置日志应见 `GL_KHR_cooperative_matrix supported by glslc`（Vulkan SDK 2026.x 已含）。
+
+### 5.3 运行时选择（环境变量，默认标量）
+
+构建后**仍走标量路径**，需在启动模型**进程前**选择：
+
+| 选择 | 启动前设置 |
+|---|---|
+| 启用实验路径 | `GGML_VK_ROCMFP4_COOPMAT=1` |
+| 同构建回标量 | `GGML_VK_ROCMFP4_COOPMAT=0`，或取消该变量 |
+| 构建排除 CM1 shader | `-DGGML_VULKAN_ROCMFP4_COOPMAT=OFF` |
+
+启动日志出现 `ROCmFP4 CM1 request: enabled (experimental, F32 accumulation)` 即生效；
+若见 `scalar fallback (build or device unsupported)` = 未激活（要求设备 **CM1 + F32 累加**，gfx1151 / Strix Halo 满足）。
+
+### 5.4 验证
+
+- 构建产物 `ggml-vulkan.dll` 体积 ~70+MB（CM1 shader `matmul_rocmfp4_f32` / `matmul_rocmfp4_fast_f32` 已编入）。
+- `--list-devices` 仍可列出 `Vulkan0` 与 `ROCmFPXVulkan0`（前提同 §7 插件已加载）。
+
+> ⚠️ 即使设了 `GGML_VK_ROCMFP4_COOPMAT=1`，**旧版构建**（如 c3b1c99 或未带该选项的打包）也不会获得该功能——
+> 必须源码含 `GGML_VULKAN_ROCMFP4_COOPMAT` 并**重编**，启动日志才可能出现 `enabled`。
+
+---
+
+## 6. 验证
 
 构建完成后（把 `<vulkan_sdk>\Bin` 加到 PATH），探测：
 
@@ -136,7 +208,7 @@ Available devices:
 
 ---
 
-## 6. 使用 `ROCmFPXVulkan0` 快速后端（Charlie ROCmFP4，可选）
+## 7. 使用 `ROCmFPXVulkan0` 快速后端（Charlie ROCmFP4，可选）
 
 > 官方 `vulkan_official` **默认用普通 `Vulkan0` 后端（较慢）**；快速通道是可选插件后端
 > **`ROCmFPXVulkan0`**（`ROCMFPX_VULKAN_PLUGIN=ON` 编译的 "Charlie ROCmFP4 Vulkan" 路径，
@@ -173,7 +245,7 @@ Available devices:
 
 ---
 
-## 7. 坑与注意事项
+## 8. 坑与注意事项
 
 1. **`VULKAN_SDK` 环境变量**：CMake 找 Vulkan 用 `CMAKE_PREFIX_PATH=<vulkan_sdk>/Lib/cmake`；
    `glslc` 在 `<vulkan_sdk>\Bin`（编译 shader 必须）。若报 `Could not find Vulkan` 或 `glslc not found`，
@@ -189,7 +261,7 @@ Available devices:
 
 ---
 
-## 8. 一句话总结
+## 9. 一句话总结
 
 Vulkan 编译成功的充要条件 = **Vulkan SDK（含 `glslc`）+ MSVC（VS 生成器）+ `-DGGML_VULKAN=ON` +
 `-DROCMFPX_VULKAN_PLUGIN=ON`（要 Charlie 快速后端）+ `CMAKE_PREFIX_PATH=<vulkan_sdk>/Lib/cmake`**，
