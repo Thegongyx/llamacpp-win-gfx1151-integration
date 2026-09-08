@@ -1,0 +1,8 @@
+{
+  "runtime": null,
+  "version": "roc_k2horizon",
+  "engine": "llamacpp",
+  "archiveSha256": "official-roc-k2-horizon-hip-vulkan-gfx1151",
+  "variant": "rocm",
+  "installed_at": "2026-09-08T13:00:00.000Z"
+}

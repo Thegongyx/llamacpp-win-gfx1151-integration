@@ -26,6 +26,7 @@ llamacpp-win-gfx1151-integration\
     ├── roc_official\                    ← 官方版：HIP/ROCm（官方 ROCmFPX 主线）
     ├── vulkan_official\                 ← 官方版：Vulkan（官方 ROCmFPX 主线）
     ├── vulkan_official_cm1\             ← 官方版：Vulkan + 实验性 CM1（cooperative-matrix，官方 ROCmFPX 主线）
+    ├── roc_k2horizon\                   ← 官方版：HIP+Vulkan 双后端（K2-Horizon 专用，官方 ROCmFPX 主线）
     ├── rocm_w4a4\                       ← fork版：HIP/W4A4（charlie12345/ROCmFPX）
     ├── roc_rocmfp4\                     ← fork版：HIP/ROCmFP4（charlie12345/ROCmFPX）
     ├── rocm_ciru\                       ← fork版：HIP/Kairic Edge（ciru-rocmfpx，Qwen3.8-27B IU4 Kairic Edge）
@@ -39,13 +40,14 @@ llamacpp-win-gfx1151-integration\
 
 ## 引擎一览
 
-本包含 **7 个引擎**：3 个官方版（来自官方主线 `ROCmFPX/ROCmFPX`）+ 4 个 fork 版（来自 charlie12345/ROCmFPX、ciru-rocmfpx 与 LaurentZuijdwijk 的 fork）。
+本包含 **8 个引擎**：4 个官方版（来自官方主线 `ROCmFPX/ROCmFPX`）+ 4 个 fork 版（来自 charlie12345/ROCmFPX、ciru-rocmfpx 与 LaurentZuijdwijk 的 fork）。
 
 | 引擎目录 | 来源 | variant 归属 | llama-server.exe |
 |---|---|---|---|
 | `roc_official` | `ROCmFPX/ROCmFPX`（HIP，gfx1151） | rocm | ~10KB（启动壳，核心在 `llama-server-impl.dll`） |
 | `vulkan_official` | `ROCmFPX/ROCmFPX`（Vulkan，gfx1151） | vulkan | ~10KB（启动壳，核心在 `llama-server-impl.dll`） |
 | `vulkan_official_cm1` | `ROCmFPX/ROCmFPX`（Vulkan + 实验性 CM1，gfx1151） | vulkan | ~10KB（启动壳，核心在 `llama-server-impl.dll`） |
+| `roc_k2horizon` | `ROCmFPX/ROCmFPX`（HIP+Vulkan 双后端，K2-Horizon 专用，gfx1151） | rocm | ~10KB（启动壳，核心在 `llama-server-impl.dll`） |
 | `rocm_w4a4` | charlie12345/ROCmFPX @ main（HIP/W4A4） | rocm | ~4.2MB（单文件） |
 | `roc_rocmfp4` | charlie12345/ROCmFPX @ main（HIP/ROCmFP4） | rocm | ~4.2MB（单文件） |
 | `rocm_ciru` | ciru-rocmfpx @ `release/kairic-edge-qwen38-27b-v1.2`（HIP/Kairic Edge，IU4） | rocm | ~4.1MB（单文件） |
@@ -87,6 +89,7 @@ variant 归属决定目标目录：
 | 引擎 | 目标目录 |
 |---|---|
 | `roc_official` | `C:\Linglong\NovaStudio\NovaMax\external\llamacpp\rocm\` |
+| `roc_k2horizon` | `C:\Linglong\NovaStudio\NovaMax\external\llamacpp\rocm\` |
 | `vulkan_official` | `C:\Linglong\NovaStudio\NovaMax\external\llamacpp\vulkan\`（目录可能需新建） |
 | `rocm_w4a4` | `C:\Linglong\NovaStudio\NovaMax\external\llamacpp\rocm\` |
 | `roc_rocmfp4` | `C:\Linglong\NovaStudio\NovaMax\external\llamacpp\rocm\` |
@@ -117,6 +120,7 @@ Copy-Item -Path ".\vulkan_official\*" -Destination $dst -Recurse -Force
 | `vulkan_qwen4exp` | Vulkan | Qwen3.8-27B-ROCmFP4-FAST（DFlash2） | https://hf-mirror.com/julianmb/Qwen-3.8-27B-ROCmFP4-FAST-GGUF | ✅ |
 | `vulkan_qwen4exp` | Vulkan | Qwen3.8-Flash-Next-ROCmFP4-FAST-imatrix（MTP，per-head） | https://hf-mirror.com/agentionai/Qwen3.8-Flash-Next-ROCmFP4-FAST-imatrix-GGUF · **fork 用 `Qwen3.8-Flash-Next-ROCmFP4-FAST-v2-ple16.gguf`（per-head PLE）** | ✅（fork 支持 MTP） |
 | `vulkan_qwen4exp` | Vulkan | sh0wie-Qwen3.8-Flash-Next-REAP-288-Q4_0_ROCMFP4_STRIX_LEAN（REAP-288 剪枝） | https://hf-mirror.com/rcmorano/sh0wie-Qwen3.8-Flash-Next-REAP-288-ROCMFPX · 文件 `sh0wie-Qwen3.8-Flash-Next-REAP-288-Q4_0_ROCMFP4_STRIX_LEAN.gguf` | ✅（无投机，见下测速） |
+| `roc_k2horizon` | HIP+Vulkan | K2-Horizon-MoVA-36B-A4B（Q8_0_ROCMFPX_AGENT） | https://hf-mirror.com/kingjones777/K2-Horizon-MoVA-36B-A4B-ROCmFP4-GGUF | —（未测速） |
 
 > **引擎更替说明**：官方项目 `ROCmFPX/ROCmFPX` 的 **`roc_official`（HIP 构建）已可替代此前两个个人/社区 fork 引擎** —— `rocm_w4a4`（charlie12345/ROCmFPX，HIP/W4A4）与 `roc_rocmfp4`（charlie12345/ROCmFPX，HIP/ROCmFP4），后两者已弃用并从 NovaMax 移除。
 
