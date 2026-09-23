@@ -134,3 +134,20 @@ def compute_metrics(predictions, references, metrics=["precision", "recall", "f1
 - **HIP prefill 显著快于 Vulkan**（~430 vs ~110 t/s）；MoE 的 Ornith 最快（prefill ~1200 t/s，decode 59–102 tok/s）。
 - **早停**：Ornith think-off 两个场景输出不足 1000 token（281 / 448），用全段 `predicted_per_second`，标注 `seg=None`。
 - **Flash-Next（qwen4exp）**：官方引擎无法加载（per-head PLE / `--ngram-on-disk` 均不支持），属 fork 专属；已在 README 标注。
+
+
+---
+
+## 六、strixllama 引擎（`roc_strixllama` / `roc_strixllama_env`）
+
+同一套方法也可用于 strixllama 引擎，但有两点不同：
+
+- **环境变量**：该引擎的性能特性由 `getenv()` 的 gate 控制、默认关（MMB / HC / QSA 等）。
+  `roc_strixllama_env` 已把默认值**烘焙进二进制**，直接用 `--llamacpp-args` 跑即可；
+  `roc_strixllama` 需要启动方提供这些 env。清单、原因与验证方法见
+  [`BUILD-STRIXLLAMA-WINDOWS.md`](build/BUILD-STRIXLLAMA-WINDOWS.md)。
+- **推荐参数**（作者实测配置）：
+  `-ngl 999 -b 8192 -ub 8192 -t 16 --poll 0 --fit off -np 1 -fa on -ctk f16 -ctv f16 --jinja --cache-prompt --cache-ram 1024 --no-cache-idle-slots --load-mode none --lazy-mode on-direct --spec-draft-n-max 3 --spec-draft-p-min 0.3`
+  （`-md` / `--mmproj` 由 lemonade 按模型 checkpoint 自动注入，勿手写。）
+- **注意**：`--cache-ram` / `--no-cache-idle-slots` / `STRIX_PROMPT_CACHE_*` 只影响 prompt cache 与多槽切换，
+  **不改变 prefill/decode 的 t/s**；测速率时用 `cache_prompt:false` 冷启动，避免缓存复用污染。

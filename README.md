@@ -3,8 +3,14 @@
 本仓库的**主要目的**是沉淀：各类 **ROCmFPX / ROCmFP4 版 llama.cpp 引擎** 在
 **Windows + AMD gfx1151 GPU（Radeon 8060S / Strix Halo）** 环境下的——
 
-- **编译方法**（见 `docs\build\*.md`，含通用 HIP 版与 ciru-rocmfpx Kairic Edge 分支版）；
+- **编译方法**（见 `docs\build\*.md`，含通用 HIP 版、ciru-rocmfpx Kairic Edge 分支版，以及
+  strixllama 补丁集版）；
 - 以及 **编译好的引擎**（`llamacpp-engines\` 内各引擎目录，含全部依赖 DLL，可直接本地推理）。
+
+其中 **`roc_strixllama` / `roc_strixllama_env`** 来自 [rulith-dev/strixllama](https://github.com/rulith-dev/strixllama)
+（在 [pwilkin/llama.cpp](https://github.com/pwilkin/llama.cpp) 之上的补丁集，面向 Qwen3.8-Flash-Next / qwen4exp）。
+`roc_strixllama_env` 把该引擎所需的默认环境变量**烘焙进二进制**（外部 env 仍可覆盖）；
+`roc_strixllama` 则为"纯二进制、env 由启动方提供"的版本。
 
 **附带功能**：把这些引擎打包成 **NovaMax 可用的适配版**。`llamacpp-engines\` 内每个引擎目录
 即"完整编译产物 + `.installed` 适配标记"，NovaMax 通过 `.installed` 识别即可选用
@@ -19,7 +25,8 @@ llamacpp-win-gfx1151-integration\
 │   ├── build\                           ← 【主】编译方法
 │   │   ├── BUILD-ROCM-HIP-GENERIC.md    ← Windows HIP/ROCm 通用编译（gfx1151）
 │   │   ├── BUILD-CIRU-ROCMFPX-WINDOWS.md← ciru-rocmfpx Kairic Edge（Windows + 3 处 Windows 移植）
-│   │   └── BUILD-VULKAN-ROCMFPX-WINDOWS.md ← ROCmFPX 官方 Vulkan 版（vulkan_official + ROCmFPXVulkan0 插件）
+│   │   ├── BUILD-VULKAN-ROCMFPX-WINDOWS.md ← ROCmFPX 官方 Vulkan 版（vulkan_official + ROCmFPXVulkan0 插件）
+│   │   └── BUILD-STRIXLLAMA-WINDOWS.md  ← strixllama 补丁集（roc_strixllama / roc_strixllama_env，含默认 env 注入）
 │   └── novamax-llamacpp-skill\
 │       └── SKILL.md                     ← 【附】NovaMax 接入详细技能文档
 └── llamacpp-engines\                    ← 【主】编译好的引擎（含全部依赖 DLL），并附 .installed 适配标记
@@ -30,7 +37,9 @@ llamacpp-win-gfx1151-integration\
     ├── rocm_w4a4\                       ← fork版：HIP/W4A4（charlie12345/ROCmFPX）
     ├── roc_rocmfp4\                     ← fork版：HIP/ROCmFP4（charlie12345/ROCmFPX）
     ├── rocm_ciru\                       ← fork版：HIP/Kairic Edge（ciru-rocmfpx，Qwen3.8-27B IU4 Kairic Edge）
-    └── vulkan_qwen4exp\                 ← fork版：Vulkan/qwen4exp（LaurentZuijdwijk）
+    ├── vulkan_qwen4exp\                 ← fork版：Vulkan/qwen4exp（LaurentZuijdwijk）
+    ├── roc_strixllama\                  ← strixllama 版：HIP（pwilkin/llama.cpp + 补丁集；env 由启动方提供）
+    └── roc_strixllama_env\              ← strixllama 版：同上，但**默认 env 已烘焙进二进制**
 ```
 
 > 说明：`llamacpp-engines\` 内每个引擎目录 = **完整编译产物** + `.installed` 适配标记。
@@ -40,7 +49,7 @@ llamacpp-win-gfx1151-integration\
 
 ## 引擎一览
 
-本包含 **8 个引擎**：4 个官方版（来自官方主线 `ROCmFPX/ROCmFPX`）+ 4 个 fork 版（来自 charlie12345/ROCmFPX、ciru-rocmfpx 与 LaurentZuijdwijk 的 fork）。
+本包含 **10 个引擎**：4 个官方版（来自官方主线 `ROCmFPX/ROCmFPX`）+ 4 个 fork 版（来自 charlie12345/ROCmFPX、ciru-rocmfpx 与 LaurentZuijdwijk 的 fork）+ 2 个 **strixllama 补丁集版**（`rulith-dev/strixllama`，在 `pwilkin/llama.cpp` 之上，面向 Qwen3.8-Flash-Next / qwen4exp）。
 
 | 引擎目录 | 来源 | variant 归属 | llama-server.exe |
 |---|---|---|---|
@@ -52,6 +61,17 @@ llamacpp-win-gfx1151-integration\
 | `roc_rocmfp4` | charlie12345/ROCmFPX @ main（HIP/ROCmFP4） | rocm | ~4.2MB（单文件） |
 | `rocm_ciru` | ciru-rocmfpx @ `release/kairic-edge-qwen38-27b-v1.2`（HIP/Kairic Edge，IU4） | rocm | ~4.1MB（单文件） |
 | `vulkan_qwen4exp` | LaurentZuijdwijk/llama.cpp @ `vulkan/qwen4exp-rocmfpx` | vulkan | ~10KB（启动壳，核心在 `llama-server-impl.dll`） |
+| `roc_strixllama` | `rulith-dev/strixllama`（pwilkin/llama.cpp @ `f5daaa3` + 补丁集；HIP，gfx1151） | rocm | ~9KB（启动壳，核心在 `llama-server-impl.dll`） |
+| `roc_strixllama_env` | 同上，额外**烘焙默认 env** | rocm | ~9KB（启动壳，核心在 `llama-server-impl.dll`） |
+
+> **strixllama 系列（`roc_strixllama` / `roc_strixllama_env`）**：HIP 构建，来自
+> [rulith-dev/strixllama](https://github.com/rulith-dev/strixllama)（`pwilkin/llama.cpp` @ `f5daaa3` + 约 39 个补丁），
+> 面向 **Qwen3.8-Flash-Next（qwen4exp）**：QSA 稀疏注意力（decode gather、block-key cache）、
+> IQ3_S/IQ4_XS 矩阵核、MTP 投机、按 shape 的 HIP graph 等。
+> 两者**同一份代码**，唯一区别：`roc_strixllama_env` 在编译期**烘焙了默认环境变量**
+> （MMB/HC/QSA 等内核 gate + prompt-cache 磁盘层），装好即按实测配置运行，外部 env 仍可覆盖；
+> `roc_strixllama` 需启动方提供这些 env。构建与验证见
+> [`docs\build\BUILD-STRIXLLAMA-WINDOWS.md`](docs/build/BUILD-STRIXLLAMA-WINDOWS.md)。
 
 > 引擎都已**实测可用**：从各自目录运行 `llama-server.exe --list-devices` 均能列出 GPU（`ROCm0` / `Vulkan0: AMD Radeon 8060S`），依赖齐全。
 
@@ -70,6 +90,7 @@ llamacpp-win-gfx1151-integration\
 | [`docs\build\BUILD-ROCM-HIP-GENERIC.md`](docs/build/BUILD-ROCM-HIP-GENERIC.md) | HIP/ROCm 通用版 | Windows HIP/ROCm 通用编译（rocm-7.14 clang + MSVC 14.44，gfx1151） |
 | [`docs\build\BUILD-CIRU-ROCMFPX-WINDOWS.md`](docs/build/BUILD-CIRU-ROCMFPX-WINDOWS.md) | ciru-rocmfpx Kairic Edge | ciru 分支（Qwen3.8-27B IU4 Kairic Edge / PromptForge），含 3 处 Windows 移植与踩坑 |
 | [`docs\build\BUILD-VULKAN-ROCMFPX-WINDOWS.md`](docs/build/BUILD-VULKAN-ROCMFPX-WINDOWS.md) | `vulkan_official`（官方主线 Vulkan） | Windows Vulkan 编译（MSVC + VULKAN_SDK 1.4.357.0），含 `ROCmFPXVulkan0` 快速后端与使用 |
+| [`docs\build\BUILD-STRIXLLAMA-WINDOWS.md`](docs/build/BUILD-STRIXLLAMA-WINDOWS.md) | `roc_strixllama` / `roc_strixllama_env` | strixllama 补丁集（pwilkin/llama.cpp + 39 补丁）的 Windows HIP 编译；含编译期默认 env 注入与验证 |
 
 各引擎的**完整编译产物**见 `llamacpp-engines\<引擎>\`（含全部依赖 DLL，可直接运行；
 `llama-server.exe --list-devices` 应列出 `ROCm0` / `Vulkan0`）。引擎性能实测见下文
@@ -95,6 +116,8 @@ variant 归属决定目标目录：
 | `roc_rocmfp4` | `C:\Linglong\NovaStudio\NovaMax\external\llamacpp\rocm\` |
 | `rocm_ciru` | `C:\Linglong\NovaStudio\NovaMax\external\llamacpp\rocm\` |
 | `vulkan_qwen4exp` | `C:\Linglong\NovaStudio\NovaMax\external\llamacpp\vulkan\`（目录可能需新建） |
+| `roc_strixllama` | `C:\Linglong\NovaStudio\NovaMax\external\llamacpp\rocm\` |
+| `roc_strixllama_env` | `C:\Linglong\NovaStudio\NovaMax\external\llamacpp\rocm\` |
 
 ```powershell
 # 例：把 vulkan_official 接入 NovaMax
@@ -121,6 +144,7 @@ Copy-Item -Path ".\vulkan_official\*" -Destination $dst -Recurse -Force
 | `vulkan_qwen4exp` | Vulkan | Qwen3.8-Flash-Next-ROCmFP4-FAST-imatrix（MTP，per-head） | https://hf-mirror.com/agentionai/Qwen3.8-Flash-Next-ROCmFP4-FAST-imatrix-GGUF · **fork 用 `Qwen3.8-Flash-Next-ROCmFP4-FAST-v2-ple16.gguf`（per-head PLE）** | ✅（fork 支持 MTP） |
 | `vulkan_qwen4exp` | Vulkan | sh0wie-Qwen3.8-Flash-Next-REAP-288-Q4_0_ROCMFP4_STRIX_LEAN（REAP-288 剪枝） | https://hf-mirror.com/rcmorano/sh0wie-Qwen3.8-Flash-Next-REAP-288-ROCMFPX · 文件 `sh0wie-Qwen3.8-Flash-Next-REAP-288-Q4_0_ROCMFP4_STRIX_LEAN.gguf` | ✅（无投机，见下测速） |
 | `roc_k2horizon` | HIP+Vulkan | K2-Horizon-MoVA-36B-A4B（Q8_0_ROCMFPX_AGENT） | https://hf-mirror.com/kingjones777/K2-Horizon-MoVA-36B-A4B-ROCmFP4-GGUF | —（未测速） |
+| `roc_strixllama_env` / `roc_strixllama` | HIP | Qwen3.8-Flash-Next（Unsloth `UD-IQ4_XS`，三片；需一并放 MTP 草稿与 mmproj） | https://hf-mirror.com/unsloth/Qwen3.8-Flash-Next-GGUF · MTP `MTP/mtp-Qwen3.8-Flash-Next-shared-Q4_K_M.gguf` · `mmproj-F16.gguf` | —（未在本机复测；作者参考值：85K prefill ~890→983 t/s，decode ~35 tok/s） |
 
 > **引擎更替说明**：官方项目 `ROCmFPX/ROCmFPX` 的 **`roc_official`（HIP 构建）已可替代此前两个个人/社区 fork 引擎** —— `rocm_w4a4`（charlie12345/ROCmFPX，HIP/W4A4）与 `roc_rocmfp4`（charlie12345/ROCmFPX，HIP/ROCmFP4），后两者已弃用并从 NovaMax 移除。
 
@@ -250,6 +274,8 @@ Copy-Item -Path ".\vulkan_official\*" -Destination $dst -Recurse -Force
 | [LaurentZuijdwijk/llama.cpp](https://github.com/LaurentZuijdwijk/llama.cpp) | `vulkan/qwen4exp-rocmfpx` | 历史 qwen4exp + Vulkan ROCmFPx fork（本次已弃用）；曾作为 vulkan_qwen4exp 引擎来源 |
 | [ciru-ai/ROCmFPX](https://github.com/ciru-ai/ROCmFPX) | `ciru/upstream-rocmfpx-scale-eval` | ROCmFPx 量化内核（`rocmfp4_hip.cu`）来源调研与参考 |
 | [daimonionnn/amd-rocmfpx-for-win](https://github.com/daimonionnn/amd-rocmfpx-for-win) | main | AMD Windows 平台 ROCmFPx 编译/基准参考（本机 Windows 编译参数借鉴于此） |
+| [pwilkin/llama.cpp](https://github.com/pwilkin/llama.cpp) | `f5daaa3` | **strixllama 系列的基座**（qwen4exp + Lightning Indexer/QSA + GDN + MTP 的开发分支） |
+| [rulith-dev/strixllama](https://github.com/rulith-dev/strixllama) | main | **`roc_strixllama` / `roc_strixllama_env` 的来源**：在 pwilkin/llama.cpp 之上的补丁集（QSA decode gather、block-key cache、IQ3_S/IQ4_XS 矩阵核、MTP 调优、按 shape 的 HIP graph、prompt-cache 磁盘层等） |
 
 ### 各引擎对应的构建来源
 
@@ -258,6 +284,8 @@ Copy-Item -Path ".\vulkan_official\*" -Destination $dst -Recurse -Force
 | `llamacpp-engines\roc_official` | ROCmFPX/ROCmFPX @ main（HIP，gfx1151） | `-DGGML_HIP=ON -DGGML_VULKAN=OFF -DGGML_HIP_FORCE_MMQ=ON -DCMAKE_HIP_ARCHITECTURES=gfx1151` + rocm-7.14 clang |
 | `llamacpp-engines\vulkan_official` | ROCmFPX/ROCmFPX @ main（Vulkan，gfx1151） | `-DGGML_VULKAN=ON -DGGML_HIP=OFF -DGGML_CUDA=OFF` + MSVC 14.44 + VULKAN_SDK 1.4.357.0 |
 | `llamacpp-engines\vulkan_official_cm1` | ROCmFPX/ROCmFPX @ main（Vulkan + 实验性 CM1，gfx1151） | `-DGGML_VULKAN=ON -DGGML_VULKAN_ROCMFP4_COOPMAT=ON -DROCMFPX_VULKAN_PLUGIN=ON -DBUILD_SHARED_LIBS=ON -DGGML_HIP=OFF -DGGML_CUDA=OFF` + MSVC + VULKAN_SDK 1.4.357.0（**Ninja** 生成器，VS 生成器在插件 ExternalProject 会报 FileTracker 错） |
+| `llamacpp-engines\roc_strixllama` | pwilkin/llama.cpp @ `f5daaa3` + `rulith-dev/strixllama` 补丁集（HIP，gfx1151） | 用 strixllama 的 `bootstrap/bootstrap.py --toolchain --fetch --patch --build`；TheRock ROCm **10.1** nightly（`10.1.0a20260910`）clang + ninja，`-DGGML_HIP=ON -DGGML_VULKAN=OFF -DAMDGPU_TARGETS=gfx1151 -DGGML_HIP_GRAPHS=ON` |
+| `llamacpp-engines\roc_strixllama_env` | 同上 + 编译期默认 env 注入 | 在 `llama_backend_init()` 起始注入默认 env（`src/strixllama-defaults.h`）：MMB/HC/QSA 等 gate + prompt-cache 磁盘层（目录按引擎 exe 目录运行时派生，可移植）；仅在该变量未设置时生效 |
 
 ### 致谢
 
@@ -265,5 +293,8 @@ Copy-Item -Path ".\vulkan_official\*" -Destination $dst -Recurse -Force
 - 感谢 **Carlo Pasquale (charlie12345)** 创建并维护 **ROCmFPX** 权重格式家族（ROCmFP3/4/6/8）及官方主线 `ROCmFPX/ROCmFPX`，使 AMD Radeon 8060S（Strix Halo）能跑通 Qwen3.8-27B-ROCmFP4-FAST 等专有量化模型。
 - 感谢 **ciru-ai / LaurentZuijdwijk** 在 ROCmFPx 内核与 qwen4exp 架构上的早期贡献（已被官方主线吸收）。
 - 感谢 **daimonionnn** 的 amd-rocmfpx-for-win，作为 AMD Windows 平台上的编译与性能评估参考。
+- 感谢 **rulith-dev** 的 [strixllama](https://github.com/rulith-dev/strixllama) 与 **pwilkin** 的
+  [llama.cpp](https://github.com/pwilkin/llama.cpp)：`roc_strixllama` / `roc_strixllama_env` 即二者的补丁集
+  在 gfx1151 上的构建（QSA 稀疏注意力、IQ3_S/IQ4_XS 矩阵核、MTP 投机与 prompt-cache 磁盘层等）。
 - 适配目标平台 **NovaMax**（Linglong NovaStudio）与 **lemonade / LemonadeServer** 的引擎发现与模型加载机制为本次集成提供了基础。
 - 本机工具链：Visual Studio 18 Build Tools (MSVC 14.44)、CMake 4.3.1、Ninja、Vulkan SDK `1.4.357.0`、ROCm 7.14 (HIP 工具链)、rocBLAS/hipBLAS，均用于上述引擎的本地编译。
