@@ -10,7 +10,7 @@
 ## 它是什么
 
 strixllama 是 `pwilkin/llama.cpp`（pin **`f5daaa3cfa6358e5dd398911ec741813745a5440`**）之上的一套补丁集
-（当前 **Strix Llama 0.1.15**：44 个 `patches/apply_*.py`，42 文件 delta），面向 **Qwen3.8-Flash-Next（qwen4exp）**，核心包括：
+（当前 **Strix Llama 0.1.17**：49 个 `patches/apply_*.py`，43 文件 delta），面向 **Qwen3.8-Flash-Next（qwen4exp）**，核心包括：
 
 - QSA 稀疏注意力：decode gather、block-key cache、small-batch causal mask 修复；
 - IQ3_S / IQ4_XS 的 matrix-core（MMB/MMQ）内核与 expert gate/up 融合（`apply_moe_glu3`）；
@@ -97,6 +97,7 @@ LLAMA_QSA_PACK_KEYS=1 LLAMA_QSA_PACK_VALUES=1 LLAMA_QSA_SCORE_BOUNDS=1 LLAMA_QSA
 LLAMA_QSA_DECODE_GATHER=1 LLAMA_QSA_BLOCK_KEY_CACHE=1 LLAMA_QSA_QUERY_STRIP=512
 STRIX_PROMPT_CACHE_MIB=16384 STRIX_PROMPT_CACHE_BLOCK=4096
 STRIX_PROMPT_CACHE_DIR=<引擎exe目录>\prompt-cache    (运行时派生, 可移植)
+STRIX_SPEC_DRAFT_BY_SLOTS=<n_max>,2,2,0    (推导: 有草稿且 -np/--parallel > 1 时; 单 slot 不设)
 ```
 
 注意：`LLAMA_MMB_HC16` **必须为 0**（为 1 时在 Windows/TheRock/Clang 下输出会被 `/` 淹没）。
@@ -117,13 +118,25 @@ STRIX_PROMPT_CACHE_DIR=<引擎exe目录>\prompt-cache    (运行时派生, 可�
 - `--cache-ram 1024` / `--no-cache-idle-slots` / `--ctx-checkpoints` / `--checkpoint-min-step`
   以及 `STRIX_PROMPT_CACHE_*` 只影响 **prompt cache 与多槽切换**（跨请求复用、省内存、放宽 recurrent 快照），
   **不改变 prefill/decode 的 t/s**。
-  （`--ctx-checkpoints 8` / `--checkpoint-min-step 32768` 为 v0.1.14 引入，0.1.15 保持，控制 recurrent state 的检查点数量与间隔。）
+  （`--ctx-checkpoints 8` / `--checkpoint-min-step 32768` 为 v0.1.14 引入，0.1.17 保持，控制 recurrent state 的检查点数量与间隔。）
 - 上游自 **0.1.13** 起把磁盘层默认改为**关闭**；`roc_strixllama_env` 烘焙了 `STRIX_PROMPT_CACHE_DIR`
   因而**默认开启**（目录跟随 exe 目录）。不想要就显式清空该变量（设为空则不启用）。
 - **0.1.15 起磁盘层与图像输入可同时开启**：0.1.13/0.1.14 里磁盘层用 `server_tokens::get_tokens()`
   比较 prompt，带投影器时会触发 `GGML_ASSERT(!has_mtmd)` 并在首个长 prompt 约 10s 后**中止服务器**；
   0.1.15（`apply_disk_v3_vision`）改读 text tokens，slot 校验也只跳过含媒体的 prompt。
   （本仓库在 0.1.14 上的旧规避——注入时检测命令行 `mmproj` 并关闭磁盘层——已随 0.1.15 移除。）
+- **多槽 + MTP 的草稿上限自动注入（0.1.17，`apply_spec_draft_by_slots`）**：`roc_strixllama_env` 启动时解析自己的
+  命令行，当同时满足「有草稿」（`--model-draft` / `-md` / `--spec-type draft*`）且「`-np` / `--parallel` > 1」时，
+  推导并写入 `STRIX_SPEC_DRAFT_BY_SLOTS="<n_max>,2,2,0"`（`n_max` 依次取 `--spec-draft-n-max`、
+  `LLAMA_ARG_SPEC_DRAFT_N_MAX`、默认 3；支持 `--flag=value`；引号内路径不会被误判为参数）。
+  **单 slot 不设置**，草稿行为与之前完全一致。`roc_strixllama`（无烘焙）需自行设置该变量。
+  依据：MoE 下每个被验证的草稿 token 要多读约 10 个（共 512 个）专家的权重，而并发会话无法共享，
+  4 路各 ~20K token 的合计吞吐从 37.9 提升到 47.4 tok/s。
+- **K/V 类型本仓库保持 f16**：0.1.16 起上游支持 `-ctk q8_0 -ctv q8_0`（262144 ctx 下 target K/V 6.0 → 3.19 GiB，
+  decode 不变、prefill 慢 1–2%）；发布的两个引擎**未启用**，需要更省显存可自行切换（会丢弃另一种类型的磁盘缓存条目）。
+- **0.1.17 另修两处正确性问题**：释放的 KV cell 现在清零（输出不再依赖之前谁用过这些 cell，代价约 0.5% decode，
+  `STRIX_KV_ZERO_FREED=0` 可关）；MTP 草稿器的 carried row 跟随会话并写进 checkpoint（同一 prompt 两次的草稿与
+  贪心输出一致；此前 85K 时会在临界 token 分叉）。
 - `-md`（草稿）与 `--mmproj` 若经 lemonade/NovaMax 加载，由模型的 checkpoint 自动注入，不要在自定义参数里手写。
 
 ## 验证
