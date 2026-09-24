@@ -10,7 +10,7 @@
 ## 它是什么
 
 strixllama 是 `pwilkin/llama.cpp`（pin **`f5daaa3cfa6358e5dd398911ec741813745a5440`**）之上的一套补丁集
-（当前 39 个 `patches/apply_*.py`），面向 **Qwen3.8-Flash-Next（qwen4exp）**，核心包括：
+（当前 43 个 `patches/apply_*.py`，42 文件 delta），面向 **Qwen3.8-Flash-Next（qwen4exp）**，核心包括：
 
 - QSA 稀疏注意力：decode gather、block-key cache、small-batch causal mask 修复；
 - IQ3_S / IQ4_XS 的 matrix-core（MMB/MMQ）内核与 expert gate/up 融合（`apply_moe_glu3`）；
@@ -106,7 +106,7 @@ STRIX_PROMPT_CACHE_DIR=<引擎exe目录>\prompt-cache    (运行时派生, 可�
 ```
 -ngl 999 -c 262144 -b 8192 -ub 8192 -t 16 --poll 0 --fit off -np 1
 -fa on -ctk f16 -ctv f16 --jinja
---cache-prompt --cache-ram 1024 --no-cache-idle-slots
+--cache-prompt --cache-ram 1024 --no-cache-idle-slots --ctx-checkpoints 8 --checkpoint-min-step 32768
 --chat-template-kwargs {"enable_thinking":false}
 --mmproj <mmproj-F16.gguf>
 --load-mode none --lazy-mode on-direct
@@ -114,8 +114,12 @@ STRIX_PROMPT_CACHE_DIR=<引擎exe目录>\prompt-cache    (运行时派生, 可�
 ```
 
 说明：
-- `--cache-ram 1024` / `--no-cache-idle-slots` / `STRIX_PROMPT_CACHE_*` 只影响 **prompt cache 与多槽切换**
-  （跨请求复用、省内存），**不改变 prefill/decode 的 t/s**。
+- `--cache-ram 1024` / `--no-cache-idle-slots` / `--ctx-checkpoints` / `--checkpoint-min-step`
+  以及 `STRIX_PROMPT_CACHE_*` 只影响 **prompt cache 与多槽切换**（跨请求复用、省内存、放宽 recurrent 快照），
+  **不改变 prefill/decode 的 t/s**。
+  （`--ctx-checkpoints 8` / `--checkpoint-min-step 32768` 为 v0.1.14 引入，控制 recurrent state 的检查点数量与间隔。）
+- 上游自 **0.1.13** 起把磁盘层默认改为**关闭**；`roc_strixllama_env` 烘焙了 `STRIX_PROMPT_CACHE_DIR`
+  因而**默认开启**。不想要就显式清空该变量（设为空则不启用）。
 - `-md`（草稿）与 `--mmproj` 若经 lemonade/NovaMax 加载，由模型的 checkpoint 自动注入，不要在自定义参数里手写。
 
 ## 验证

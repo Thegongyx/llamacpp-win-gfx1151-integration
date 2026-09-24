@@ -147,7 +147,7 @@ def compute_metrics(predictions, references, metrics=["precision", "recall", "f1
   `roc_strixllama` 需要启动方提供这些 env。清单、原因与验证方法见
   [`BUILD-STRIXLLAMA-WINDOWS.md`](build/BUILD-STRIXLLAMA-WINDOWS.md)。
 - **推荐参数**（作者实测配置）：
-  `-ngl 999 -b 8192 -ub 8192 -t 16 --poll 0 --fit off -np 1 -fa on -ctk f16 -ctv f16 --jinja --cache-prompt --cache-ram 1024 --no-cache-idle-slots --load-mode none --lazy-mode on-direct --spec-draft-n-max 3 --spec-draft-p-min 0.3`
+  `-ngl 999 -b 8192 -ub 8192 -t 16 --poll 0 --fit off -np 1 -fa on -ctk f16 -ctv f16 --jinja --cache-prompt --cache-ram 1024 --no-cache-idle-slots --ctx-checkpoints 8 --checkpoint-min-step 32768 --load-mode none --lazy-mode on-direct --spec-draft-n-max 3 --spec-draft-p-min 0.3`
   （`-md` / `--mmproj` 由 lemonade 按模型 checkpoint 自动注入，勿手写。）
 - **注意**：`--cache-ram` / `--no-cache-idle-slots` / `STRIX_PROMPT_CACHE_*` 只影响 prompt cache 与多槽切换，
   **不改变 prefill/decode 的 t/s**；测速率时用 `cache_prompt:false` 冷启动，避免缓存复用污染。

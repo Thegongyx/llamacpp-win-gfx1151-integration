@@ -65,7 +65,7 @@ llamacpp-win-gfx1151-integration\
 | `roc_strixllama_env` | 同上，额外**烘焙默认 env** | rocm | ~9KB（启动壳，核心在 `llama-server-impl.dll`） |
 
 > **strixllama 系列（`roc_strixllama` / `roc_strixllama_env`）**：HIP 构建，来自
-> [rulith-dev/strixllama](https://github.com/rulith-dev/strixllama)（`pwilkin/llama.cpp` @ `f5daaa3` + 约 39 个补丁），
+> [rulith-dev/strixllama](https://github.com/rulith-dev/strixllama)（`pwilkin/llama.cpp` @ `f5daaa3` + 约 43 个补丁 / 42 文件 delta），
 > 面向 **Qwen3.8-Flash-Next（qwen4exp）**：QSA 稀疏注意力（decode gather、block-key cache）、
 > IQ3_S/IQ4_XS 矩阵核、MTP 投机、按 shape 的 HIP graph 等。
 > 两者**同一份代码**，唯一区别：`roc_strixllama_env` 在编译期**烘焙了默认环境变量**
@@ -90,7 +90,7 @@ llamacpp-win-gfx1151-integration\
 | [`docs\build\BUILD-ROCM-HIP-GENERIC.md`](docs/build/BUILD-ROCM-HIP-GENERIC.md) | HIP/ROCm 通用版 | Windows HIP/ROCm 通用编译（rocm-7.14 clang + MSVC 14.44，gfx1151） |
 | [`docs\build\BUILD-CIRU-ROCMFPX-WINDOWS.md`](docs/build/BUILD-CIRU-ROCMFPX-WINDOWS.md) | ciru-rocmfpx Kairic Edge | ciru 分支（Qwen3.8-27B IU4 Kairic Edge / PromptForge），含 3 处 Windows 移植与踩坑 |
 | [`docs\build\BUILD-VULKAN-ROCMFPX-WINDOWS.md`](docs/build/BUILD-VULKAN-ROCMFPX-WINDOWS.md) | `vulkan_official`（官方主线 Vulkan） | Windows Vulkan 编译（MSVC + VULKAN_SDK 1.4.357.0），含 `ROCmFPXVulkan0` 快速后端与使用 |
-| [`docs\build\BUILD-STRIXLLAMA-WINDOWS.md`](docs/build/BUILD-STRIXLLAMA-WINDOWS.md) | `roc_strixllama` / `roc_strixllama_env` | strixllama 补丁集（pwilkin/llama.cpp + 39 补丁）的 Windows HIP 编译；含编译期默认 env 注入与验证 |
+| [`docs\build\BUILD-STRIXLLAMA-WINDOWS.md`](docs/build/BUILD-STRIXLLAMA-WINDOWS.md) | `roc_strixllama` / `roc_strixllama_env` | strixllama 补丁集（pwilkin/llama.cpp + 43 补丁）的 Windows HIP 编译；含编译期默认 env 注入与验证 |
 
 各引擎的**完整编译产物**见 `llamacpp-engines\<引擎>\`（含全部依赖 DLL，可直接运行；
 `llama-server.exe --list-devices` 应列出 `ROCm0` / `Vulkan0`）。引擎性能实测见下文
