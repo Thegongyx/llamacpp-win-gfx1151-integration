@@ -10,7 +10,7 @@
 ## 它是什么
 
 strixllama 是 `pwilkin/llama.cpp`（pin **`f5daaa3cfa6358e5dd398911ec741813745a5440`**）之上的一套补丁集
-（当前 43 个 `patches/apply_*.py`，42 文件 delta），面向 **Qwen3.8-Flash-Next（qwen4exp）**，核心包括：
+（当前 **Strix Llama 0.1.15**：44 个 `patches/apply_*.py`，42 文件 delta），面向 **Qwen3.8-Flash-Next（qwen4exp）**，核心包括：
 
 - QSA 稀疏注意力：decode gather、block-key cache、small-batch causal mask 修复；
 - IQ3_S / IQ4_XS 的 matrix-core（MMB/MMQ）内核与 expert gate/up 融合（`apply_moe_glu3`）；
@@ -117,13 +117,13 @@ STRIX_PROMPT_CACHE_DIR=<引擎exe目录>\prompt-cache    (运行时派生, 可�
 - `--cache-ram 1024` / `--no-cache-idle-slots` / `--ctx-checkpoints` / `--checkpoint-min-step`
   以及 `STRIX_PROMPT_CACHE_*` 只影响 **prompt cache 与多槽切换**（跨请求复用、省内存、放宽 recurrent 快照），
   **不改变 prefill/decode 的 t/s**。
-  （`--ctx-checkpoints 8` / `--checkpoint-min-step 32768` 为 v0.1.14 引入，控制 recurrent state 的检查点数量与间隔。）
+  （`--ctx-checkpoints 8` / `--checkpoint-min-step 32768` 为 v0.1.14 引入，0.1.15 保持，控制 recurrent state 的检查点数量与间隔。）
 - 上游自 **0.1.13** 起把磁盘层默认改为**关闭**；`roc_strixllama_env` 烘焙了 `STRIX_PROMPT_CACHE_DIR`
-  因而**默认开启**。不想要就显式清空该变量（设为空则不启用）。
-- **例外（重要）**：模型带图像投影器（命令行含 `mmproj`）时**不开启**磁盘层——磁盘层的 token 路径会调用
-  `server_tokens::get_tokens()`，其 `GGML_ASSERT(!has_mtmd)` 在多模态下失败并**中止服务器**
-  （上游 0.1.13 默认关闭该层即与此相关）。烘焙注入会检测命令行里的 `mmproj` 并跳过
-  `STRIX_PROMPT_CACHE_DIR`；同理**不要**给带 mmproj 的模型在 env 里手动设该变量。
+  因而**默认开启**（目录跟随 exe 目录）。不想要就显式清空该变量（设为空则不启用）。
+- **0.1.15 起磁盘层与图像输入可同时开启**：0.1.13/0.1.14 里磁盘层用 `server_tokens::get_tokens()`
+  比较 prompt，带投影器时会触发 `GGML_ASSERT(!has_mtmd)` 并在首个长 prompt 约 10s 后**中止服务器**；
+  0.1.15（`apply_disk_v3_vision`）改读 text tokens，slot 校验也只跳过含媒体的 prompt。
+  （本仓库在 0.1.14 上的旧规避——注入时检测命令行 `mmproj` 并关闭磁盘层——已随 0.1.15 移除。）
 - `-md`（草稿）与 `--mmproj` 若经 lemonade/NovaMax 加载，由模型的 checkpoint 自动注入，不要在自定义参数里手写。
 
 ## 验证

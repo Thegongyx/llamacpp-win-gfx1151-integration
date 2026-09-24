@@ -284,8 +284,8 @@ Copy-Item -Path ".\vulkan_official\*" -Destination $dst -Recurse -Force
 | `llamacpp-engines\roc_official` | ROCmFPX/ROCmFPX @ main（HIP，gfx1151） | `-DGGML_HIP=ON -DGGML_VULKAN=OFF -DGGML_HIP_FORCE_MMQ=ON -DCMAKE_HIP_ARCHITECTURES=gfx1151` + rocm-7.14 clang |
 | `llamacpp-engines\vulkan_official` | ROCmFPX/ROCmFPX @ main（Vulkan，gfx1151） | `-DGGML_VULKAN=ON -DGGML_HIP=OFF -DGGML_CUDA=OFF` + MSVC 14.44 + VULKAN_SDK 1.4.357.0 |
 | `llamacpp-engines\vulkan_official_cm1` | ROCmFPX/ROCmFPX @ main（Vulkan + 实验性 CM1，gfx1151） | `-DGGML_VULKAN=ON -DGGML_VULKAN_ROCMFP4_COOPMAT=ON -DROCMFPX_VULKAN_PLUGIN=ON -DBUILD_SHARED_LIBS=ON -DGGML_HIP=OFF -DGGML_CUDA=OFF` + MSVC + VULKAN_SDK 1.4.357.0（**Ninja** 生成器，VS 生成器在插件 ExternalProject 会报 FileTracker 错） |
-| `llamacpp-engines\roc_strixllama` | pwilkin/llama.cpp @ `f5daaa3` + `rulith-dev/strixllama` 补丁集（HIP，gfx1151） | 用 strixllama 的 `bootstrap/bootstrap.py --toolchain --fetch --patch --build`；TheRock ROCm **10.1** nightly（`10.1.0a20260910`）clang + ninja，`-DGGML_HIP=ON -DGGML_VULKAN=OFF -DAMDGPU_TARGETS=gfx1151 -DGGML_HIP_GRAPHS=ON` |
-| `llamacpp-engines\roc_strixllama_env` | 同上 + 编译期默认 env 注入 | 在 `llama_backend_init()` 起始注入默认 env（`src/strixllama-defaults.h`）：MMB/HC/QSA 等 gate + prompt-cache 磁盘层（目录按引擎 exe 目录运行时派生，可移植）；仅在该变量未设置时生效 |
+| `llamacpp-engines\roc_strixllama` | pwilkin/llama.cpp @ `f5daaa3` + `rulith-dev/strixllama` 补丁集（**0.1.15**，HIP，gfx1151） | 用 strixllama 的 `bootstrap/bootstrap.py --toolchain --fetch --patch --build`；TheRock ROCm **10.1** nightly（`10.1.0a20260910`）clang + ninja，`-DGGML_HIP=ON -DGGML_VULKAN=OFF -DAMDGPU_TARGETS=gfx1151 -DGGML_HIP_GRAPHS=ON` |
+| `llamacpp-engines\roc_strixllama_env` | 同上 + 编译期默认 env 注入 | 在 `llama_backend_init()` 起始注入默认 env（`src/strixllama-defaults.h`）：MMB/HC/QSA 等 gate + prompt-cache 磁盘层（目录按引擎 exe 目录运行时派生，可移植）；仅在该变量未设置时生效。0.1.15 起磁盘层与图像输入（mmproj）可同时开启 |
 
 ### 致谢
 
