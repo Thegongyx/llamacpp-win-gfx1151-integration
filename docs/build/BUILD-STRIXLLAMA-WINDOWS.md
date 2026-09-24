@@ -120,6 +120,10 @@ STRIX_PROMPT_CACHE_DIR=<引擎exe目录>\prompt-cache    (运行时派生, 可�
   （`--ctx-checkpoints 8` / `--checkpoint-min-step 32768` 为 v0.1.14 引入，控制 recurrent state 的检查点数量与间隔。）
 - 上游自 **0.1.13** 起把磁盘层默认改为**关闭**；`roc_strixllama_env` 烘焙了 `STRIX_PROMPT_CACHE_DIR`
   因而**默认开启**。不想要就显式清空该变量（设为空则不启用）。
+- **例外（重要）**：模型带图像投影器（命令行含 `mmproj`）时**不开启**磁盘层——磁盘层的 token 路径会调用
+  `server_tokens::get_tokens()`，其 `GGML_ASSERT(!has_mtmd)` 在多模态下失败并**中止服务器**
+  （上游 0.1.13 默认关闭该层即与此相关）。烘焙注入会检测命令行里的 `mmproj` 并跳过
+  `STRIX_PROMPT_CACHE_DIR`；同理**不要**给带 mmproj 的模型在 env 里手动设该变量。
 - `-md`（草稿）与 `--mmproj` 若经 lemonade/NovaMax 加载，由模型的 checkpoint 自动注入，不要在自定义参数里手写。
 
 ## 验证

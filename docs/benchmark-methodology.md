@@ -151,3 +151,5 @@ def compute_metrics(predictions, references, metrics=["precision", "recall", "f1
   （`-md` / `--mmproj` 由 lemonade 按模型 checkpoint 自动注入，勿手写。）
 - **注意**：`--cache-ram` / `--no-cache-idle-slots` / `STRIX_PROMPT_CACHE_*` 只影响 prompt cache 与多槽切换，
   **不改变 prefill/decode 的 t/s**；测速率时用 `cache_prompt:false` 冷启动，避免缓存复用污染。
+  带 mmproj 的（视觉）模型**不要**开磁盘层（`STRIX_PROMPT_CACHE_DIR`），否则 `server_tokens::get_tokens()`
+  的 `GGML_ASSERT(!has_mtmd)` 会中止服务器。
