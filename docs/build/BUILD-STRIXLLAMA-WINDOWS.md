@@ -10,7 +10,7 @@
 ## 它是什么
 
 strixllama 是 `pwilkin/llama.cpp`（pin **`f5daaa3cfa6358e5dd398911ec741813745a5440`**）之上的一套补丁集
-（当前 **Strix Llama 0.2.0**：52 个 `patches/apply_*.py`，51 文件 delta），面向 **Qwen3.8-Flash-Next（qwen4exp）**，核心包括：
+（当前 **Strix Llama 0.2.8**：67 个 `patches/apply_*.py`，64 文件 delta），面向 **Qwen3.8-Flash-Next（qwen4exp）**，核心包括：
 
 - QSA 稀疏注意力：decode gather、block-key cache、small-batch causal mask 修复；
 - IQ3_S / IQ4_XS 的 matrix-core（MMB/MMQ）内核与 expert gate/up 融合（`apply_moe_glu3`）；
@@ -26,7 +26,7 @@ strixllama 是 `pwilkin/llama.cpp`（pin **`f5daaa3cfa6358e5dd398911ec741813745a
 | Python | 3.12+ |
 | git / CMake / Ninja | `bootstrap.py` 会自行下载 ninja；CMake 需在 PATH |
 | MSVC | 需存在 `vcvars64.bat`（ROCm 的 clang 仍链接 MSVC 运行时、用 Windows SDK 头） |
-| ROCm | **不要**装系统 ROCm；`--toolchain` 会把 TheRock ROCm **10.1 nightly** 作为 Python wheel 装进 `toolchain/rocm-venv` |
+| ROCm | **不要**装系统 ROCm；`--toolchain` 会把 TheRock ROCm **10.2 nightly** 作为 Python wheel 装进 `toolchain/rocm-venv` |
 | 磁盘 | 工具链 ~8GB、构建 ~10GB |
 
 > 本机用的是 **VS 18 BuildTools**（`C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools`），
@@ -40,9 +40,9 @@ strixllama 是 `pwilkin/llama.cpp`（pin **`f5daaa3cfa6358e5dd398911ec741813745a
 git clone https://gh.xmly.dev/https://github.com/rulith-dev/strixllama.git
 cd strixllama
 
-# 1) 工具链：TheRock ROCm 10.1 nightly（wheel）+ ninja，装进 toolchain/rocm-venv
+# 1) 工具链：TheRock ROCm 10.2 nightly（wheel）+ ninja，装进 toolchain/rocm-venv
 python bootstrap\bootstrap.py --toolchain
-#   pin 为 10.1.0a20260910，来自滚动窗口约 27 天的 nightly 索引，过期后用：
+#   pin 为 10.2.0a20260925，来自滚动窗口约 27 天的 nightly 索引，过期后用：
 #   python bootstrap\bootstrap.py --toolchain --rocm-version <index 现有版本>
 
 # 2) 拉上游 + 打补丁（checkout pwilkin 的 pin，再按 PATCH_ORDER 套用补丁）
@@ -51,7 +51,7 @@ python bootstrap\bootstrap.py --verify      # 期望 “N of N patched files mat
 
 # 3) 编译（HIP/ROCm，gfx1151）
 #    需 CMake 在 PATH；bootstrap 会自行合并 vcvars64.bat 的环境
-python bootstrap\bootstrap.py --build       # 产物在 bin\hip-rocm101\
+python bootstrap\bootstrap.py --build       # 产物在 bin\hip\
 ```
 
 ### 打成自包含引擎目录
@@ -59,7 +59,7 @@ python bootstrap\bootstrap.py --build       # 产物在 bin\hip-rocm101\
 ```powershell
 # 收集 llama-server 及其传递依赖的 ROCm DLL、gfx1151 kernel 库、VC/OpenMP 运行时
 python tools\make_runtime_bundle.py --out dist\runtime --python-zip <python-3.12-embed.zip>
-# 结果在 dist\runtime\bin\hip-rocm101\（约 273 文件 / 311MB）
+# 结果在 dist\runtime\bin\hip\（约 274 文件 / 314MB）
 ```
 
 拷到一个以引擎命名的目录，并放 `.installed` 标记（**必须无 BOM**，否则 NovaMax 的 `JSON.parse` 会抛错）：
@@ -97,7 +97,7 @@ LLAMA_QSA_PACK_KEYS=1 LLAMA_QSA_PACK_VALUES=1 LLAMA_QSA_SCORE_BOUNDS=1 LLAMA_QSA
 LLAMA_QSA_DECODE_GATHER=1 LLAMA_QSA_BLOCK_KEY_CACHE=1 LLAMA_QSA_QUERY_STRIP=512
 STRIX_PROMPT_CACHE_MIB=16384 STRIX_PROMPT_CACHE_BLOCK=4096
 STRIX_PROMPT_CACHE_DIR=<引擎exe目录>\prompt-cache    (运行时派生, 可移植)
-STRIX_SPEC_DRAFT_BY_SLOTS=<n_max>,2,2,0    (推导: 有草稿且 -np/--parallel > 1 时; 单 slot 不设)
+STRIX_SPEC_DRAFT_BY_SLOTS=<n_max>,2,2,2,0    (推导: 有草稿且 -np/--parallel > 1 时; 单 slot 不设)
 STRIX_MOE_VEC_MAX=6    (推导: -np/--parallel > 1 时; 单 slot 不设)
 ```
 
@@ -119,7 +119,7 @@ STRIX_MOE_VEC_MAX=6    (推导: -np/--parallel > 1 时; 单 slot 不设)
 - `--cache-ram 1024` / `--no-cache-idle-slots` / `--ctx-checkpoints` / `--checkpoint-min-step`
   以及 `STRIX_PROMPT_CACHE_*` 只影响 **prompt cache 与多槽切换**（跨请求复用、省内存、放宽 recurrent 快照），
   **不改变 prefill/decode 的 t/s**。
-  （`--ctx-checkpoints 8` / `--checkpoint-min-step 32768` 为 v0.1.14 引入，0.2.0 保持，控制 recurrent state 的检查点数量与间隔。）
+  （`--ctx-checkpoints 8` / `--checkpoint-min-step 32768` 为 v0.1.14 引入，0.2.8 保持，控制 recurrent state 的检查点数量与间隔。）
 - 上游自 **0.1.13** 起把磁盘层默认改为**关闭**；`roc_strixllama_env` 烘焙了 `STRIX_PROMPT_CACHE_DIR`
   因而**默认开启**（目录跟随 exe 目录）。不想要就显式清空该变量（设为空则不启用）。
 - **0.1.15 起磁盘层与图像输入可同时开启**：0.1.13/0.1.14 里磁盘层用 `server_tokens::get_tokens()`
@@ -128,11 +128,11 @@ STRIX_MOE_VEC_MAX=6    (推导: -np/--parallel > 1 时; 单 slot 不设)
   （本仓库在 0.1.14 上的旧规避——注入时检测命令行 `mmproj` 并关闭磁盘层——已随 0.1.15 移除。）
 - **两条按并发自动注入（0.1.17 起）**：`roc_strixllama_env` 启动时解析自己的
   命令行，当同时满足「有草稿」（`--model-draft` / `-md` / `--spec-type draft*`）且「`-np` / `--parallel` > 1」时，
-  推导并写入 `STRIX_SPEC_DRAFT_BY_SLOTS="<n_max>,2,2,0"`（`n_max` 依次取 `--spec-draft-n-max`、
+  推导并写入 `STRIX_SPEC_DRAFT_BY_SLOTS="<n_max>,2,2,2,0"`（`n_max` 依次取 `--spec-draft-n-max`、
   `LLAMA_ARG_SPEC_DRAFT_N_MAX`、默认 3；支持 `--flag=value`；引号内路径不会被误判为参数）。
   **单 slot 不设置**，草稿行为与之前完全一致。`roc_strixllama`（无烘焙）需自行设置该变量。
   依据：MoE 下每个被验证的草稿 token 要多读约 10 个（共 512 个）专家的权重，而并发会话无法共享，
-  4 路各 ~20K token 的合计吞吐从 37.9 提升到 47.4 tok/s。
+  4 路各 ~20K token 的合计吞吐从 37.9（不投）提升到 47.4（0.1.17 策略）；0.2.1 起改为 2–4 槽都投 2 个、5 槽起不投（4 路 50.6 → 56.1 tok/s；6/8 路则不投更好，64.4 对 60.7、70.7 对 64.0）。
   - **`STRIX_MOE_VEC_MAX=6`（0.2.0，`apply_prefill_kernels_020`）**：一步内超过 6 个 token 的路由专家改走 tiled kernel
     （每个专家只反量化一次）。同样只在 `-np` / `--parallel` > 1 时设置，单 slot 保持上游上限与旧版结果；
     manager 在多槽时也会设它（8 会话合计约 +6%）。`roc_strixllama`（无烘焙）需自行设置。
@@ -144,6 +144,13 @@ STRIX_MOE_VEC_MAX=6    (推导: -np/--parallel > 1 时; 单 slot 不设)
   （`STRIX_PLE_CACHE_MB`，默认 400；冷 2K prompt 的 PLE 行 240 → 58 ms）。质量同档（PPL 2.6811 vs 0.1.17 的 2.6880）
   但**不再逐位一致**；要 0.1.17 的逐位输出可设
   `STRIX_HC_INJECT_FUSE=0 STRIX_GDN_R16=0 STRIX_SKINNY_F32=0 STRIX_MMB_F32_MIN_T=512`。
+- **0.2.1–0.2.8：多会话 / agent 与首字（补丁 52 → 67；delta 51 → 64 文件）**：
+  - 0.2.1 / 0.2.3 / 0.2.4：多会话 MTP 的草稿长度按 step 统一（不再出现 2/2/1 触发多遍模型），verify step 的小乘积离开 few-workgroup kernel
+    → 3 会话 +17%、4 会话 +9% tokens；
+  - 0.2.2：聊天首字更快——最后两个走 hipBLAS 的乘积（含 indexer 的 BF16 投影）挪走，消除某 shape 首次使用约 0.4 s 的落盘加载卡顿（**单会话也受益**）；
+  - 0.2.6 / 0.2.7：会话常驻（默认 8 槽、最高 16；每槽约 +0.43 GB 显存）、共享 system prompt 只算一次、长 prompt 不再阻塞其它会话
+    （`STRIX_PREFILL_BUDGET`）：6 agent 首字中位数 10.1 → 3.4 s、处理 token 75K → 45K；并修复「图像输入 + 多会话」；
+  - 0.2.8：修 0.2.7 在长会话旁处理新 prompt 时可能「用错计算」作答的问题；磁盘 prompt cache 存储升到 v4（首次启动清空一次旧条目）。
 - **K/V 类型本仓库保持 f16**：0.1.16 起上游支持 `-ctk q8_0 -ctv q8_0`（262144 ctx 下 target K/V 6.0 → 3.19 GiB，
   decode 不变、prefill 慢 1–2%）；发布的两个引擎**未启用**，需要更省显存可自行切换（会丢弃另一种类型的磁盘缓存条目）。
 - **0.1.17 另修两处正确性问题**：释放的 KV cell 现在清零（输出不再依赖之前谁用过这些 cell，代价约 0.5% decode，
