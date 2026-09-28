@@ -10,7 +10,7 @@
 ## 它是什么
 
 strixllama 是 `pwilkin/llama.cpp`（pin **`f5daaa3cfa6358e5dd398911ec741813745a5440`**）之上的一套补丁集
-（当前 **Strix Llama 0.2.8**：67 个 `patches/apply_*.py`，64 文件 delta），面向 **Qwen3.8-Flash-Next（qwen4exp）**，核心包括：
+（当前 **Strix Llama 0.3.0**：71 个 `patches/apply_*.py`，68 文件 delta），面向 **Qwen3.8-Flash-Next（qwen4exp）**，核心包括：
 
 - QSA 稀疏注意力：decode gather、block-key cache、small-batch causal mask 修复；
 - IQ3_S / IQ4_XS 的 matrix-core（MMB/MMQ）内核与 expert gate/up 融合（`apply_moe_glu3`）；
@@ -90,7 +90,7 @@ LLAMA_MMB_CACHE=4 LLAMA_MMB_F32SPLIT=2 LLAMA_MMB_HC16=0 LLAMA_MMB_SHADOW=2 LLAMA
 LLAMA_HC_CN_SHAPE=1 LLAMA_HC_GATEMIX=1 LLAMA_HC_MIX_FUSE=1 LLAMA_HC_BLK16=1
 LLAMA_HC_RES16=1 LLAMA_HC_PACK_DI=1
 LLAMA_NORM_GATED=1 LLAMA_NORM_ROWS=1 LLAMA_IDX_RELU_SUM=1 LLAMA_PLE_CONV=1 LLAMA_GDN_CONV=1
-STRIX_SPEC_DRAFT_UBATCH=2048 LLAMA_MTP_QSA=1
+LLAMA_MTP_QSA=1
 LLAMA_QSA_SPARSE=1 LLAMA_QSA_BLOCK_SELECTION=1 LLAMA_QSA_COMPACT_METADATA=1 LLAMA_QSA_DENSE_SHORTCUT=1
 LLAMA_QSA_DIRECT_INDICES=1 LLAMA_QSA_FA_V3=1 LLAMA_QSA_FUSE_EXPAND=1 LLAMA_QSA_NO_DENSE_MASK=1
 LLAMA_QSA_PACK_KEYS=1 LLAMA_QSA_PACK_VALUES=1 LLAMA_QSA_SCORE_BOUNDS=1 LLAMA_QSA_WHOLE_ATTN=1
@@ -99,6 +99,7 @@ STRIX_PROMPT_CACHE_MIB=16384 STRIX_PROMPT_CACHE_BLOCK=4096
 STRIX_PROMPT_CACHE_DIR=<引擎exe目录>\prompt-cache    (运行时派生, 可移植)
 STRIX_SPEC_DRAFT_BY_SLOTS=<n_max>,2,2,2,0    (推导: 有草稿且 -np/--parallel > 1 时; 单 slot 不设)
 STRIX_MOE_VEC_MAX=6    (推导: -np/--parallel > 1 时; 单 slot 不设)
+STRIX_SPEC_DRAFT_UBATCH=<推导(0.3.0): ≤524288→2048; 池更大时按 2048*524288/池 向下取 256 的倍数, 最低 512>  (外部显式设置优先)
 ```
 
 注意：`LLAMA_MMB_HC16` **必须为 0**（为 1 时在 Windows/TheRock/Clang 下输出会被 `/` 淹没）。
@@ -108,7 +109,7 @@ STRIX_MOE_VEC_MAX=6    (推导: -np/--parallel > 1 时; 单 slot 不设)
 ```
 -ngl 999 -c 262144 -b 8192 -ub 8192 -t 16 --poll 0 --fit off -np 1
 -fa on -ctk f16 -ctv f16 --jinja
---cache-prompt --cache-ram 1024 --no-cache-idle-slots --ctx-checkpoints 8 --checkpoint-min-step 32768
+--cache-prompt --cache-ram 1024 --no-cache-idle-slots --ctx-checkpoints 8 --checkpoint-min-step 4096
 --chat-template-kwargs {"enable_thinking":false}
 --mmproj <mmproj-F16.gguf>
 --load-mode none --lazy-mode on-direct
@@ -119,7 +120,7 @@ STRIX_MOE_VEC_MAX=6    (推导: -np/--parallel > 1 时; 单 slot 不设)
 - `--cache-ram 1024` / `--no-cache-idle-slots` / `--ctx-checkpoints` / `--checkpoint-min-step`
   以及 `STRIX_PROMPT_CACHE_*` 只影响 **prompt cache 与多槽切换**（跨请求复用、省内存、放宽 recurrent 快照），
   **不改变 prefill/decode 的 t/s**。
-  （`--ctx-checkpoints 8` / `--checkpoint-min-step 32768` 为 v0.1.14 引入，0.2.8 保持，控制 recurrent state 的检查点数量与间隔。）
+  （`--ctx-checkpoints 8` 为 v0.1.14 引入；`--checkpoint-min-step` 自 0.3.0 起用 **4096**——0.2.6 起 checkpoint 由 runtime 按"损失"挑选，这个值只是最小间隔，32768 会让中短会话几乎没有可用回滚点。）
 - 上游自 **0.1.13** 起把磁盘层默认改为**关闭**；`roc_strixllama_env` 烘焙了 `STRIX_PROMPT_CACHE_DIR`
   因而**默认开启**（目录跟随 exe 目录）。不想要就显式清空该变量（设为空则不启用）。
 - **0.1.15 起磁盘层与图像输入可同时开启**：0.1.13/0.1.14 里磁盘层用 `server_tokens::get_tokens()`
@@ -151,12 +152,20 @@ STRIX_MOE_VEC_MAX=6    (推导: -np/--parallel > 1 时; 单 slot 不设)
   - 0.2.6 / 0.2.7：会话常驻（默认 8 槽、最高 16；每槽约 +0.43 GB 显存）、共享 system prompt 只算一次、长 prompt 不再阻塞其它会话
     （`STRIX_PREFILL_BUDGET`）：6 agent 首字中位数 10.1 → 3.4 s、处理 token 75K → 45K；并修复「图像输入 + 多会话」；
   - 0.2.8：修 0.2.7 在长会话旁处理新 prompt 时可能「用错计算」作答的问题；磁盘 prompt cache 存储升到 v4（首次启动清空一次旧条目）。
+- **0.2.9 / 0.3.0（stable）**：
+  - 0.2.9：33–127 token 的 prompt 片段（agent 工具返回、短追问）也走稀疏注意力；新增防错保险（一旦稀疏注意力走到会忽略选择的 kernel 直接报错，
+    而不是算出错误答案）；prefill 略快（1226–1231 → 1242–1245 t/s），逐位相同。
+  - 0.3.0：**大 KV 池 + MTP 可加载**——此前池超过约 512K cells 时，草稿为整池预留的稠密 mask（768K 时 3.9 GB）会让加载失败，
+    现在草稿分步跑，池到 1M cells 上限都能加载；多长会话同时作答时主机侧开销更小（mask 记账只读一遍，逐字节相同）；
+    发布前 150 分钟混合负载、145 个工作负载无失败。
+  - 基准（默认设置）：95.6K prompt prefill 1217 t/s；86K 上下文后 decode 35.8 t/s、短问 44.9 t/s；3/4 会话并发合计 58.8 / 62.6 t/s。
 - **K/V 类型本仓库保持 f16**：0.1.16 起上游支持 `-ctk q8_0 -ctv q8_0`（262144 ctx 下 target K/V 6.0 → 3.19 GiB，
   decode 不变、prefill 慢 1–2%）；发布的两个引擎**未启用**，需要更省显存可自行切换（会丢弃另一种类型的磁盘缓存条目）。
 - **0.1.17 另修两处正确性问题**：释放的 KV cell 现在清零（输出不再依赖之前谁用过这些 cell，代价约 0.5% decode，
   `STRIX_KV_ZERO_FREED=0` 可关）；MTP 草稿器的 carried row 跟随会话并写进 checkpoint（同一 prompt 两次的草稿与
   贪心输出一致；此前 85K 时会在临界 token 分叉）。
-- `-md`（草稿）与 `--mmproj` 若经 lemonade/NovaMax 加载，由模型的 checkpoint 自动注入，不要在自定义参数里手写。
+- -md（草稿）与 --mmproj 若经 lemonade/NovaMax 加载，由模型的 checkpoint 自动注入，不要在自定义参数里手写。
+- 多槽（会话常驻）：-np N（N>1）时应同时加 -kvu（共享 KV 池，单会话仍可用满上下文）；若把池（-c/ctx_size）设得大于单会话上下文，再加 --kv-unified-per-slot <单会话上下文> 给每个会话封顶。
 
 ## 验证
 
