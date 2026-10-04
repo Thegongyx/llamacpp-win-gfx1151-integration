@@ -10,7 +10,7 @@
 ## 它是什么
 
 strixllama 是 `pwilkin/llama.cpp`（pin **`f5daaa3cfa6358e5dd398911ec741813745a5440`**）之上的一套补丁集
-（当前 **Strix Llama 0.3.0**：71 个 `patches/apply_*.py`，68 文件 delta），面向 **Qwen3.8-Flash-Next（qwen4exp）**，核心包括：
+（当前 **Rulith Inference 0.4.3**（原 Strix Llama）：99 个 `patches/apply_*.py`，85 文件 delta），面向 **Qwen3.8-Flash-Next（qwen4exp）**，核心包括：
 
 - QSA 稀疏注意力：decode gather、block-key cache、small-batch causal mask 修复；
 - IQ3_S / IQ4_XS 的 matrix-core（MMB/MMQ）内核与 expert gate/up 融合（`apply_moe_glu3`）；
@@ -90,7 +90,7 @@ LLAMA_MMB_CACHE=4 LLAMA_MMB_F32SPLIT=2 LLAMA_MMB_HC16=0 LLAMA_MMB_SHADOW=2 LLAMA
 LLAMA_HC_CN_SHAPE=1 LLAMA_HC_GATEMIX=1 LLAMA_HC_MIX_FUSE=1 LLAMA_HC_BLK16=1
 LLAMA_HC_RES16=1 LLAMA_HC_PACK_DI=1
 LLAMA_NORM_GATED=1 LLAMA_NORM_ROWS=1 LLAMA_IDX_RELU_SUM=1 LLAMA_PLE_CONV=1 LLAMA_GDN_CONV=1
-LLAMA_MTP_QSA=1
+LLAMA_MTP_QSA=1 LLAMA_MTP_INDEX_SHARE=1
 LLAMA_QSA_SPARSE=1 LLAMA_QSA_BLOCK_SELECTION=1 LLAMA_QSA_COMPACT_METADATA=1 LLAMA_QSA_DENSE_SHORTCUT=1
 LLAMA_QSA_DIRECT_INDICES=1 LLAMA_QSA_FA_V3=1 LLAMA_QSA_FUSE_EXPAND=1 LLAMA_QSA_NO_DENSE_MASK=1
 LLAMA_QSA_PACK_KEYS=1 LLAMA_QSA_PACK_VALUES=1 LLAMA_QSA_SCORE_BOUNDS=1 LLAMA_QSA_WHOLE_ATTN=1
@@ -99,6 +99,7 @@ STRIX_PROMPT_CACHE_MIB=16384 STRIX_PROMPT_CACHE_BLOCK=4096
 STRIX_PROMPT_CACHE_DIR=<引擎exe目录>\prompt-cache    (运行时派生, 可移植)
 STRIX_SPEC_DRAFT_BY_SLOTS=<n_max>,2,2,2,0    (推导: 有草稿且 -np/--parallel > 1 时; 单 slot 不设)
 STRIX_MOE_VEC_MAX=6    (推导: -np/--parallel > 1 时; 单 slot 不设)
+STRIX_SPEC_DRAFT_BY_SLOTS_SAMPLED=<min(n,2)>,<min(n,2)>,1,1,0  (0.4.1; 有草稿即设, 单 slot 也设; 采样请求用这张表)
 STRIX_SPEC_DRAFT_UBATCH=<推导(0.3.0): ≤524288→2048; 池更大时按 2048*524288/池 向下取 256 的倍数, 最低 512>  (外部显式设置优先)
 ```
 
@@ -120,7 +121,7 @@ STRIX_SPEC_DRAFT_UBATCH=<推导(0.3.0): ≤524288→2048; 池更大时按 2048*5
 - `--cache-ram 1024` / `--no-cache-idle-slots` / `--ctx-checkpoints` / `--checkpoint-min-step`
   以及 `STRIX_PROMPT_CACHE_*` 只影响 **prompt cache 与多槽切换**（跨请求复用、省内存、放宽 recurrent 快照），
   **不改变 prefill/decode 的 t/s**。
-  （`--ctx-checkpoints 8` 为 v0.1.14 引入；`--checkpoint-min-step` 自 0.3.0 起用 **4096**——0.2.6 起 checkpoint 由 runtime 按"损失"挑选，这个值只是最小间隔，32768 会让中短会话几乎没有可用回滚点。）
+  （`--ctx-checkpoints 8` 为 v0.1.14 引入；`--checkpoint-min-step` 自 0.4.3 起用 **4096**——0.2.6 起 checkpoint 由 runtime 按"损失"挑选，这个值只是最小间隔，32768 会让中短会话几乎没有可用回滚点。）
 - 上游自 **0.1.13** 起把磁盘层默认改为**关闭**；`roc_strixllama_env` 烘焙了 `STRIX_PROMPT_CACHE_DIR`
   因而**默认开启**（目录跟随 exe 目录）。不想要就显式清空该变量（设为空则不启用）。
 - **0.1.15 起磁盘层与图像输入可同时开启**：0.1.13/0.1.14 里磁盘层用 `server_tokens::get_tokens()`
@@ -159,6 +160,13 @@ STRIX_SPEC_DRAFT_UBATCH=<推导(0.3.0): ≤524288→2048; 池更大时按 2048*5
     现在草稿分步跑，池到 1M cells 上限都能加载；多长会话同时作答时主机侧开销更小（mask 记账只读一遍，逐字节相同）；
     发布前 150 分钟混合负载、145 个工作负载无失败。
   - 基准（默认设置）：95.6K prompt prefill 1217 t/s；86K 上下文后 decode 35.8 t/s、短问 44.9 t/s；3/4 会话并发合计 58.8 / 62.6 t/s。
+- **0.3.1–0.4.3（项目更名 Rulith Inference；补丁 71 → 99，delta 68 → 85 文件）**：
+  - decode：多会话的稀疏注意力按"运行段"读取（0.3.9）、每层状态回写更少（0.4.0）、小 kernel 优化 ——
+    8 会话各 ~40K token、512K q8_0 池、MTP 关：75.8 → 91.7 tok/s 合计；
+  - prefill（0.4.2 / 0.4.3，逐位相同）：2K prompt 876 → 1127 t/s（UD-Q4_K_XL）、1K 920 → 964，共享专家的输出并入路由专家求和处；
+  - MTP 采样（0.4.1）：采样请求的草稿改为"抽出"而非贪心猜，草稿更短（见下方采样表推导）；
+  - 长会话不再越界（0.3.8，超过上下文会摘要早期内容）；MTP draft IndexShare（0.3.1）：草稿视图 >32K cells 后只读稀疏选择 + 增量
+    （-3.6% @86K、-6.5% @212K）；稳定性：checkpoint 边界（0.3.2）、缓存恢复后的记忆（0.3.5）、文档按钮（0.3.7）。
 - **K/V 类型本仓库保持 f16**：0.1.16 起上游支持 `-ctk q8_0 -ctv q8_0`（262144 ctx 下 target K/V 6.0 → 3.19 GiB，
   decode 不变、prefill 慢 1–2%）；发布的两个引擎**未启用**，需要更省显存可自行切换（会丢弃另一种类型的磁盘缓存条目）。
 - **0.1.17 另修两处正确性问题**：释放的 KV cell 现在清零（输出不再依赖之前谁用过这些 cell，代价约 0.5% decode，
