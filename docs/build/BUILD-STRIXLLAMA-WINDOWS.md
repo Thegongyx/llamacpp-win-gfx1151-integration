@@ -10,7 +10,7 @@
 ## 它是什么
 
 strixllama 是 `pwilkin/llama.cpp`（pin **`f5daaa3cfa6358e5dd398911ec741813745a5440`**）之上的一套补丁集
-（当前 **Rulith Inference 0.4.3**（原 Strix Llama）：99 个 `patches/apply_*.py`，85 文件 delta），面向 **Qwen3.8-Flash-Next（qwen4exp）**，核心包括：
+（当前 **Rulith Inference 0.5.0**：108 个 `patches/apply_*.py`，87 文件 delta），面向 **Qwen3.8-Flash-Next（qwen4exp）**，核心包括：
 
 - QSA 稀疏注意力：decode gather、block-key cache、small-batch causal mask 修复；
 - IQ3_S / IQ4_XS 的 matrix-core（MMB/MMQ）内核与 expert gate/up 融合（`apply_moe_glu3`）；
@@ -59,8 +59,14 @@ python bootstrap\bootstrap.py --build       # 产物在 bin\hip\
 ```powershell
 # 收集 llama-server 及其传递依赖的 ROCm DLL、gfx1151 kernel 库、VC/OpenMP 运行时
 python tools\make_runtime_bundle.py --out dist\runtime --python-zip <python-3.12-embed.zip>
-# 结果在 dist\runtime\bin\hip\（约 274 文件 / 314MB）
+# 结果在 dist\runtime\bin\hip\（约 274 文件 / 314MB），另有 dist\runtime\bin\.kpack\（rocBLAS 内核包）
 ```
+
+> **`.kpack` 必须一起部署（0.4.10 起）**：rocBLAS 自己的内核（GEMV 等非 Tensile 形状）不在 DLL 里，而在
+> `bin/.kpack/blas_lib_gfx1151.kpack`（4.9 MB）；DLL 按相对自身的 `../.kpack/` 路径加载它。缺失时报
+> `hipErrorInvalidKernelFile`（上游 issue #11，某些模型与视觉投影器会崩）。本仓库的引擎是**扁平布局**
+> （DLL 在引擎根目录），所以它要放在**引擎目录的上一级**：`engines\.kpack\`（同一 `engines\` 下所有引擎共用）。
+> 引擎 zip 已含 `.kpack/` 顶层条目，解压到 `engines\` 即得 `engines\<引擎>\` + `engines\.kpack\`。
 
 拷到一个以引擎命名的目录，并放 `.installed` 标记（**必须无 BOM**，否则 NovaMax 的 `JSON.parse` 会抛错）：
 
@@ -69,7 +75,7 @@ python tools\make_runtime_bundle.py --out dist\runtime --python-zip <python-3.12
   "archiveSha256": "local-build-pwilkin-f5daaa3+strixllama-<rev>", "variant": "rocm", "engine": "llamacpp" }
 ```
 
-> `version` 必须与目录名一致；`variant` 为 `rocm`（HIP 构建）。
+> `version` 必须与目录名一致；`variant` 为 `rocm`（HIP 构建）。另需在引擎目录的**上一级**放 `.kpack\`（见上）。
 
 ## 编译期默认环境变量（仅 `roc_strixllama_env`）
 
@@ -121,7 +127,7 @@ STRIX_SPEC_DRAFT_UBATCH=<推导(0.3.0): ≤524288→2048; 池更大时按 2048*5
 - `--cache-ram 1024` / `--no-cache-idle-slots` / `--ctx-checkpoints` / `--checkpoint-min-step`
   以及 `STRIX_PROMPT_CACHE_*` 只影响 **prompt cache 与多槽切换**（跨请求复用、省内存、放宽 recurrent 快照），
   **不改变 prefill/decode 的 t/s**。
-  （`--ctx-checkpoints 8` 为 v0.1.14 引入；`--checkpoint-min-step` 自 0.4.3 起用 **4096**——0.2.6 起 checkpoint 由 runtime 按"损失"挑选，这个值只是最小间隔，32768 会让中短会话几乎没有可用回滚点。）
+  （`--ctx-checkpoints 8` 为 v0.1.14 引入；`--checkpoint-min-step` 自 0.5.0 起用 **4096**——0.2.6 起 checkpoint 由 runtime 按"损失"挑选，这个值只是最小间隔，32768 会让中短会话几乎没有可用回滚点。）
 - 上游自 **0.1.13** 起把磁盘层默认改为**关闭**；`roc_strixllama_env` 烘焙了 `STRIX_PROMPT_CACHE_DIR`
   因而**默认开启**（目录跟随 exe 目录）。不想要就显式清空该变量（设为空则不启用）。
 - **0.1.15 起磁盘层与图像输入可同时开启**：0.1.13/0.1.14 里磁盘层用 `server_tokens::get_tokens()`
@@ -167,6 +173,13 @@ STRIX_SPEC_DRAFT_UBATCH=<推导(0.3.0): ≤524288→2048; 池更大时按 2048*5
   - MTP 采样（0.4.1）：采样请求的草稿改为"抽出"而非贪心猜，草稿更短（见下方采样表推导）；
   - 长会话不再越界（0.3.8，超过上下文会摘要早期内容）；MTP draft IndexShare（0.3.1）：草稿视图 >32K cells 后只读稀疏选择 + 增量
     （-3.6% @86K、-6.5% @212K）；稳定性：checkpoint 边界（0.3.2）、缓存恢复后的记忆（0.3.5）、文档按钮（0.3.7）。
+- **0.4.4–0.5.0（补丁 99 → 108，delta 85 → 87 文件）**：
+  - 0.4.10 / 0.5.0：运行时补上 rocBLAS 的 kernel pack（`bin/.kpack/blas_lib_gfx1151.kpack`），修上游 #11（某些模型与视觉投影器崩溃）——**部署布局见上**；
+  - 0.4.9：等待 GPU 改为轮询主机内存（不再走 HIP 运行时同步）→ decode 约 +2%；
+  - 0.4.8：prompt 只在最后一个 user message 处切批；0.4.7：小 carve（64 GB）时专家放系统内存（#10）；
+  - 0.4.6：低秩草稿头 `mtp-…-head-lr512.gguf`（+3.6% 贪心 / +4.9% 采样 decode，贪心输出逐位不变），`-ot` 支持 `ROCm_Host`；
+  - 0.4.4：修 `STRIX_HC_XRES` 在 `-ub 512/2048` 下破坏 head 输入（#7）；README 明确"调优文件"为 UD-IQ4_XS / UD-Q4_K_XL（#8）。
+  - 门表（HIP_GATES / HIP_QSA_GATES）与烘焙的完全一致 → 烘焙头无需新增 gate。
 - **K/V 类型本仓库保持 f16**：0.1.16 起上游支持 `-ctk q8_0 -ctv q8_0`（262144 ctx 下 target K/V 6.0 → 3.19 GiB，
   decode 不变、prefill 慢 1–2%）；发布的两个引擎**未启用**，需要更省显存可自行切换（会丢弃另一种类型的磁盘缓存条目）。
 - **0.1.17 另修两处正确性问题**：释放的 KV cell 现在清零（输出不再依赖之前谁用过这些 cell，代价约 0.5% decode，
