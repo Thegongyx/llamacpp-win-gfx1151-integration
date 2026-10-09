@@ -10,7 +10,7 @@
 ## 它是什么
 
 strixllama 是 `pwilkin/llama.cpp`（pin **`f5daaa3cfa6358e5dd398911ec741813745a5440`**）之上的一套补丁集
-（当前 **Rulith Inference 0.5.0**：108 个 `patches/apply_*.py`，87 文件 delta），面向 **Qwen3.8-Flash-Next（qwen4exp）**，核心包括：
+（当前 **Rulith Inference 0.5.4**：114 个 `patches/apply_*.py`，97 文件 delta），面向 **Qwen3.8-Flash-Next（qwen4exp）**，核心包括：
 
 - QSA 稀疏注意力：decode gather、block-key cache、small-batch causal mask 修复；
 - IQ3_S / IQ4_XS 的 matrix-core（MMB/MMQ）内核与 expert gate/up 融合（`apply_moe_glu3`）；
@@ -127,7 +127,7 @@ STRIX_SPEC_DRAFT_UBATCH=<推导(0.3.0): ≤524288→2048; 池更大时按 2048*5
 - `--cache-ram 1024` / `--no-cache-idle-slots` / `--ctx-checkpoints` / `--checkpoint-min-step`
   以及 `STRIX_PROMPT_CACHE_*` 只影响 **prompt cache 与多槽切换**（跨请求复用、省内存、放宽 recurrent 快照），
   **不改变 prefill/decode 的 t/s**。
-  （`--ctx-checkpoints 8` 为 v0.1.14 引入；`--checkpoint-min-step` 自 0.5.0 起用 **4096**——0.2.6 起 checkpoint 由 runtime 按"损失"挑选，这个值只是最小间隔，32768 会让中短会话几乎没有可用回滚点。）
+  （`--ctx-checkpoints 8` 为 v0.1.14 引入；`--checkpoint-min-step` 自 0.5.4 起用 **4096**——0.2.6 起 checkpoint 由 runtime 按"损失"挑选，这个值只是最小间隔，32768 会让中短会话几乎没有可用回滚点。）
 - 上游自 **0.1.13** 起把磁盘层默认改为**关闭**；`roc_strixllama_env` 烘焙了 `STRIX_PROMPT_CACHE_DIR`
   因而**默认开启**（目录跟随 exe 目录）。不想要就显式清空该变量（设为空则不启用）。
 - **0.1.15 起磁盘层与图像输入可同时开启**：0.1.13/0.1.14 里磁盘层用 `server_tokens::get_tokens()`
@@ -180,6 +180,12 @@ STRIX_SPEC_DRAFT_UBATCH=<推导(0.3.0): ≤524288→2048; 池更大时按 2048*5
   - 0.4.6：低秩草稿头 `mtp-…-head-lr512.gguf`（+3.6% 贪心 / +4.9% 采样 decode，贪心输出逐位不变），`-ot` 支持 `ROCm_Host`；
   - 0.4.4：修 `STRIX_HC_XRES` 在 `-ub 512/2048` 下破坏 head 输入（#7）；README 明确"调优文件"为 UD-IQ4_XS / UD-Q4_K_XL（#8）。
   - 门表（HIP_GATES / HIP_QSA_GATES）与烘焙的完全一致 → 烘焙头无需新增 gate。
+- **0.5.1–0.5.4（补丁 108 → 114，delta 87 → 97 文件）**：
+  - **0.5.1 prefill 更快**：三处算子融合、专家内核不再在每个同步点等全部 load、turn 起点 checkpoint 更省（应用内 156K prompt 约 115 s ≈ 1359 t/s，2 槽、MTP 关）；
+  - 0.5.2：工具参数为 `oneOf` / `allOf` 形式时可用；新增请求日志 `STRIX_REQUEST_LOG`（默认不写）；
+  - 0.5.3：Codex / Claude Code 可接入（上游 #12：`/v1/responses`、`/v1/messages`、turn 之间的 developer 消息）；更多工具 schema 形式；64 GB carve 的解码停顿改为规避；
+  - **0.5.4**：**图像之后的文本恢复全速**（上游 #13——此前会话中一旦有图，之后所有文本都走慢路径）；并从根因消除 64 GB carve 的停顿。
+  - 门表未变 → 烘焙的默认 env 与推导（贪心/采样草稿表、`STRIX_MOE_VEC_MAX`、按池缩放的 `STRIX_SPEC_DRAFT_UBATCH`、`LLAMA_MTP_INDEX_SHARE`）保持不变。
 - **K/V 类型本仓库保持 f16**：0.1.16 起上游支持 `-ctk q8_0 -ctv q8_0`（262144 ctx 下 target K/V 6.0 → 3.19 GiB，
   decode 不变、prefill 慢 1–2%）；发布的两个引擎**未启用**，需要更省显存可自行切换（会丢弃另一种类型的磁盘缓存条目）。
 - **0.1.17 另修两处正确性问题**：释放的 KV cell 现在清零（输出不再依赖之前谁用过这些 cell，代价约 0.5% decode，
